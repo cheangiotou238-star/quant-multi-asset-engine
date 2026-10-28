@@ -1,0 +1,17 @@
+# 環境變數與機密
+.env
+.env.*
+
+# Python 快取與虛擬環境
+__pycache__/
+venv/
+
+# 執行期臨時日誌與暫存檔
+*.log
+*log.txt
+done.txt
+
+# 注意：以下檔案必須納入版控，供 GitHub Actions 雲端更新與 Hostinger 讀取
+# 不忽略 data/history/*.csv 與 public/data/latest_signals.json
+!data/history/*.csv
+!public/data/latest_signals.json

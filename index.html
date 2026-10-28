@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>六大資產量化戰情室</title>
+<style>
+  :root {
+    --ivory: #FAF6EE;        /* 象牙白 */
+    --ivory-card: #FFFDF8;   /* 卡片底 */
+    --gold: #C9A227;         /* 香檳金 */
+    --gold-soft: #E7D6A8;    /* 淡金 */
+    --dark: #3B3B3B;         /* 深灰字體 */
+    --muted: #7A7A7A;
+    --green: #2E7D32;
+    --blue: #1E5AA8;
+    --yellow: #B08A00;
+    --red: #B23A3A;
+    --gray: #8A8A8A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ivory);
+    color: var(--dark);
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  header { text-align: center; margin-bottom: 26px; }
+  header h1 {
+    font-family: Georgia, "Times New Roman", "Noto Serif TC", serif;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    letter-spacing: 2px;
+    display: inline-block;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--gold);
+  }
+  header .subtitle { color: var(--muted); margin-top: 10px; font-size: 0.9rem; }
+
+  .summary {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    justify-content: center; margin-bottom: 28px;
+  }
+  .summary .chip {
+    background: var(--ivory-card);
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+
+  .macro-card {
+    background: var(--ivory-card);
+    border: 1px solid var(--gold);
+    border-radius: 12px;
+    margin-bottom: 26px;
+    padding: 16px 18px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+  }
+  .macro-card h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.05rem;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .macro-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+  .macro-item {
+    flex: 1 1 180px;
+    min-width: 150px;
+    background: linear-gradient(180deg, #FFFDF8, #F5EEDC);
+    border: 1px solid var(--gold-soft);
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .macro-item .macro-label {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .macro-item .macro-value {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--dark);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: var(--ivory-card);
+    border: 1px solid var(--gold);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+  }
+  .card h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.15rem;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--gold-soft);
+    background: linear-gradient(180deg, #FFFDF8, #F5EEDC);
+    letter-spacing: 1px;
+  }
+  .asset { padding: 12px 18px; border-bottom: 1px dashed var(--gold-soft); }
+  .asset:last-child { border-bottom: none; }
+  .asset .row1 {
+    display: flex; justify-content: space-between;
+    align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .asset .name { font-weight: 600; }
+  .asset .sym { color: var(--muted); font-size: 0.82rem; margin-left: 5px; }
+  .tag {
+    font-size: 0.76rem; padding: 2px 10px;
+    border-radius: 999px; white-space: nowrap; border: 1px solid;
+  }
+  .tag.green  { color: var(--green);  border-color: var(--green);  background: #EAF4EA; }
+  .tag.blue   { color: var(--blue);   border-color: var(--blue);   background: #E8F0FA; }
+  .tag.yellow { color: var(--yellow); border-color: var(--yellow); background: #FAF3DE; }
+  .tag.red    { color: var(--red);    border-color: var(--red);    background: #FAE9E9; }
+  .tag.gray   { color: var(--gray);   border-color: var(--gray);   background: #F0F0F0; }
+  .tag.fire   { color: #B45309;   border-color: #B45309;   background: #FEF3E2; }
+  .asset .metrics {
+    margin-top: 6px; font-size: 0.84rem;
+    display: flex; flex-wrap: wrap; gap: 4px 14px;
+  }
+  .asset .reason {
+    margin-top: 6px; font-size: 0.8rem; color: var(--muted);
+  }
+  .up   { color: var(--green); }
+  .down { color: var(--red); }
+  .flat { color: var(--muted); }
+  footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>📊 六大資產量化戰情室</h1>
+    <div class="subtitle" id="subtitle">載入中…</div>
+  </header>
+  <section class="macro-card" id="macro" style="display:none;">
+    <h2>🌍 全球宏觀與市場情緒溫度計</h2>
+    <div class="macro-grid" id="macroGrid"></div>
+  </section>
+  <div class="summary" id="summary"></div>
+  <div class="grid" id="grid"></div>
+  <footer>Quant Multi-Asset Engine · 資料來源 Yahoo Finance</footer>
+
+  <script>
+    const CATEGORY_ORDER = ["Crypto", "Stocks", "REITs", "Bonds", "ETFs", "Gold"];
+    const CATEGORY_ICON = {
+      Crypto: "🪙", Stocks: "📈", REITs: "🏢", Bonds: "📜", ETFs: "🧺", Gold: "🥇"
+    };
+
+    function tagClass(signal) {
+      if (!signal) return "gray";
+      if (signal.startsWith("🟢")) return "green";
+      if (signal.startsWith("🔵")) return "blue";
+      if (signal.startsWith("🟡")) return "yellow";
+      if (signal.startsWith("🔴")) return "red";
+      if (signal.startsWith("🔥")) return "fire";
+      return "gray";
+    }
+
+    function fmt(v, d = 2) {
+      if (v === null || v === undefined) return "N/A";
+      return Number(v).toFixed(d);
+    }
+    function fmtPct(v) {
+      if (v === null || v === undefined) return "N/A";
+      const n = Number(v);
+      return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+    }
+    function fmtYield(v) {
+      if (v === null || v === undefined) return "N/A";
+      return (Number(v) * 100).toFixed(2) + "%";
+    }
+    function fmtRate(v) {
+      if (v === null || v === undefined) return "N/A";
+      return (Number(v) * 100).toFixed(1) + "%";
+    }
+    function fmtWeight(v) {
+      if (v === null || v === undefined) return "N/A";
+      return Number(v).toFixed(2) + "%";
+    }
+    function maTrend(ma20, ma60) {
+      if (ma20 === null || ma60 === null || ma20 === undefined || ma60 === undefined) return "N/A";
+      if (ma20 > ma60) return "多頭排列 ↑";
+      if (ma20 < ma60) return "空頭排列 ↓";
+      return "均線糾結";
+    }
+    function changeClass(v) {
+      if (v === null || v === undefined) return "flat";
+      return v >= 0 ? "up" : "down";
+    }
+
+    function renderMacro(macro) {
+      const el = document.getElementById("macro");
+      const grid = document.getElementById("macroGrid");
+      if (!macro) {
+        el.style.display = "none";
+        return;
+      }
+      el.style.display = "block";
+      const num = (v, suffix = "") =>
+        (v === null || v === undefined) ? "N/A" : Number(v).toFixed(2) + suffix;
+      const fng = macro.crypto_fear_greed;
+      const fngValue = (fng === null || fng === undefined)
+        ? "N/A"
+        : Number(fng).toFixed(0) + (macro.crypto_fear_greed_classification ? "（" + macro.crypto_fear_greed_classification + "）" : "");
+      const items = [
+        { label: "🇺🇸 10年期美債殖利率", value: num(macro.us10y_yield, "%") },
+        { label: "💵 美元指數 DXY", value: num(macro.dxy) },
+        { label: "😨 VIX 恐慌指數", value: num(macro.vix) + (macro.vix_zone ? "（" + macro.vix_zone + "）" : "") },
+        { label: "🪙 幣圈恐慌貪婪", value: fngValue },
+      ];
+      grid.innerHTML = items.map(it =>
+        `<div class="macro-item"><div class="macro-label">${it.label}</div><div class="macro-value">${it.value}</div></div>`
+      ).join("");
+    }
+
+    function render(data) {
+      document.getElementById("subtitle").textContent =
+        "產生時間：" + (data.generated_at || "N/A");
+
+      const summary = document.getElementById("summary");
+      const sc = data.summary?.signal_counts || {};
+      let chips = `<div class="chip">總標的：${data.summary?.total_assets ?? 0} 檔</div>`;
+      for (const [sig, cnt] of Object.entries(sc)) {
+        chips += `<div class="chip">${sig} × ${cnt}</div>`;
+      }
+      summary.innerHTML = chips;
+
+      renderMacro(data.macro_overview);
+
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      for (const cat of CATEGORY_ORDER) {
+        const items = data.assets?.[cat] || [];
+        const card = document.createElement("section");
+        card.className = "card";
+        let html = `<h2>${CATEGORY_ICON[cat] || ""} ${cat}</h2>`;
+        for (const it of items) {
+          const cls = tagClass(it.signal);
+          const chgCls = changeClass(it.change_pct);
+          const bt = it.backtest_strategy_1y || {};
+          html += `
+            <div class="asset">
+              <div class="row1">
+                <span class="name">${it.name}<span class="sym">${it.symbol}</span></span>
+                <span class="tag ${cls}">${it.signal || "⚪ 區間觀望"}</span>
+              </div>
+              <div class="metrics">
+                <span>價格 <b>${fmt(it.price)}</b> <span class="${chgCls}">${fmtPct(it.change_pct)}</span></span>
+                <span>RSI <b>${fmt(it.rsi14)}</b></span>
+                <span>${maTrend(it.ma20, it.ma60)}</span>
+                <span>殖利率 <b>${fmtYield(it.dividend_yield)}</b></span>
+              </div>
+              <div class="metrics">
+                <span>週期定位 <b>${it.horizon || "N/A"}</b></span>
+                <span>ATR14 <b>${fmt(it.atr14)}</b></span>
+                <span>MA200 <b>${fmt(it.ma200)}</b></span>
+                <span>HIGH20 <b>${fmt(it.high20)}</b></span>
+              </div>
+              <div class="metrics">
+                <span>建議買入 <b>${fmt(it.ideal_buy_price)}</b></span>
+                <span>嚴格止損 <b>${fmt(it.stop_loss_price)}</b></span>
+                <span>目標停利 <b>${fmt(it.take_profit_price)}</b></span>
+                <span>建議倉位 <b>${fmtWeight(it.suggested_weight_pct)}</b></span>
+              </div>
+              <div class="metrics">
+                <span>1年回測勝率 <b>${fmtRate(bt.win_rate)}</b></span>
+                <span>累積報酬 <b>${fmtRate(bt.strategy_return_1y)}</b></span>
+              </div>
+              <div class="metrics">
+                <span>量能狀態 <b>${it.volume_status || "N/A"}</b></span>
+                <span>1年交易 <b>${bt.trade_count_1y ?? "N/A"}</b> 次</span>
+                <span>最近出場 <b>${bt.last_exit_reason || "N/A"}</b></span>
+              </div>
+              <div class="metrics">
+                <span>出場法則 ${it.exit_rule_desc || "N/A"}</span>
+              </div>
+              <div class="reason">📝 ${it.action_reason || "N/A"}</div>
+            </div>`;
+        }
+        card.innerHTML = html;
+        grid.appendChild(card);
+      }
+    }
+
+    function loadJson(url) {
+      return fetch(url, { cache: "no-store" }).then(r => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      });
+    }
+
+    // 部署於 Hostinger 子網域根目錄時，優先讀取 public 內的資料，失敗則 fallback
+    loadJson("./public/data/latest_signals.json")
+      .catch(() => loadJson("./data/latest_signals.json"))
+      .then(render)
+      .catch(err => {
+        document.getElementById("subtitle").textContent =
+          "⚠️ 無法載入資料：" + err.message;
+        document.getElementById("summary").innerHTML =
+          '<div class="chip">請先執行 python quant_engine.py 產生資料，並以 HTTP 伺服器開啟本頁（例如在 public 目錄執行 python -m http.server）。</div>';
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+name: Daily Quant Engine
+
+on:
+  schedule:
+    # 亞洲股市收盤（UTC 08:35，台灣/香港 16:35）
+    - cron: '35 8 * * 1-5'
+    # 美股與加密貨幣收盤（UTC 21:35，美東 16:35）
+    - cron: '35 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-quant-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run quant engine and notifier
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python quant_engine.py
+          python notifier.py
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/history/*.csv public/data/latest_signals.json index.html
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: auto-update quant signals and history data"
+            git push
+          fi
