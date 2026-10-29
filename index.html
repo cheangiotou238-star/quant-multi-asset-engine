@@ -189,6 +189,15 @@
       if (v === null || v === undefined) return "N/A";
       return (Number(v) * 100).toFixed(1) + "%";
     }
+    function fmtRateSigned(v) {
+      if (v === null || v === undefined) return "N/A";
+      const n = Number(v) * 100;
+      return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+    }
+    function fmtRatio(v) {
+      if (v === null || v === undefined) return "N/A";
+      return Number(v).toFixed(2);
+    }
     function fmtWeight(v) {
       if (v === null || v === undefined) return "N/A";
       return Number(v).toFixed(2) + "%";
@@ -281,6 +290,12 @@
               <div class="metrics">
                 <span>1年回測勝率 <b>${fmtRate(bt.win_rate)}</b></span>
                 <span>累積報酬 <b>${fmtRate(bt.strategy_return_1y)}</b></span>
+              </div>
+              <div class="metrics">
+                <span>最大回撤 MDD <b>${fmtRateSigned(bt.max_drawdown_pct)}</b></span>
+                <span>年化夏普 <b>${fmtRatio(bt.sharpe_ratio)}</b></span>
+                <span>獲利因子 <b>${fmtRatio(bt.profit_factor)}</b></span>
+                <span>近半年報酬 <b>${fmtRateSigned(bt.oos_return_6m)}</b></span>
               </div>
               <div class="metrics">
                 <span>量能狀態 <b>${it.volume_status || "N/A"}</b></span>

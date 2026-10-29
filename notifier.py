@@ -68,6 +68,20 @@ def fmt_rate(v):
     return f"{v * 100:.1f}%"
 
 
+def fmt_pct_signed(v):
+    """將小數報酬 / 回撤轉為帶正負號的百分比字串（-0.1234 -> -12.34%）。"""
+    if v is None:
+        return "N/A"
+    return f"{v * 100:+.2f}%"
+
+
+def fmt_ratio(v):
+    """比率（夏普 / 獲利因子）格式化，保留 2 位小數。"""
+    if v is None:
+        return "N/A"
+    return f"{v:.2f}"
+
+
 def fmt_int(v):
     """整數（交易次數）格式化，None 回傳 N/A。"""
     if v is None:
@@ -156,6 +170,10 @@ def build_embeds(data):
                 f" 停損 **{fmt_num(it.get('stop_loss_price'), 2)}** 停利 **{fmt_num(it.get('take_profit_price'), 2)}**\n"
                 f"🏆 勝率 **{fmt_rate(bt.get('win_rate'))}** 報酬 **{fmt_rate(bt.get('strategy_return_1y'))}**"
                 f" 交易 **{fmt_int(bt.get('trade_count_1y'))}** 次\n"
+                f"📉 最大回撤 **{fmt_pct_signed(bt.get('max_drawdown_pct'))}**"
+                f" 夏普 **{fmt_ratio(bt.get('sharpe_ratio'))}**"
+                f" 獲利因子 **{fmt_ratio(bt.get('profit_factor'))}**\n"
+                f"🕰 近半年報酬 **{fmt_pct_signed(bt.get('oos_return_6m'))}**\n"
                 f"📦 建議倉位 **{fmt_weight(it.get('suggested_weight_pct'))}**｜"
                 f"🚪 {bt.get('last_exit_reason') or 'N/A'}｜📊 {it.get('volume_status') or 'N/A'}\n"
                 f"📝 {it.get('action_reason') or 'N/A'}"

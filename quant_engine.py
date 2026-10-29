@@ -49,6 +49,9 @@ HISTORY_DIR = os.path.join(".", "data", "history")
 OUTPUT_DIR = os.path.join(".", "public", "data")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "latest_signals.json")
 
+# 本地 CSV 容量防膨脹鎖：每檔只保留最近 N 個交易日（約 4 年日線，足夠計算 MA200 與 1 年回測）
+MAX_HISTORY_ROWS = 1000
+
 # 訊號定義
 SIGNAL_GREEN = "🟢 強烈買進 / 低檔加碼"
 SIGNAL_BLUE = "🔵 趨勢多頭 / 續抱"
@@ -365,13 +368,18 @@ def backtest_strategy(signal, ind, rules=None, category=None):
         ④ 指標反轉出場（依資產類別區分門檻，降低過度交易頻率）
     每次交易結算扣除 ROUND_TRIP_COST（手續費 + 滑價）。
 
-    回傳 dict：win_rate / strategy_return_1y / trade_count_1y / last_exit_reason。
+    回傳 dict：win_rate / strategy_return_1y / trade_count_1y / last_exit_reason，
+    以及機構級風控指標 max_drawdown_pct / sharpe_ratio / profit_factor / oos_return_6m。
     """
     result = {
         "win_rate": None,
         "strategy_return_1y": None,
         "trade_count_1y": 0,
         "last_exit_reason": "無交易",
+        "max_drawdown_pct": None,
+        "sharpe_ratio": None,
+        "profit_factor": None,
+        "oos_return_6m": None,
     }
     if signal is None or ind is None or ind.empty:
         return result
@@ -399,7 +407,7 @@ def backtest_strategy(signal, ind, rules=None, category=None):
             return None
         return to_float(series.iloc[i])
 
-    trades = []  # (net_return, exit_reason)
+    trades = []  # (net_return, exit_reason, entry_idx, exit_idx)
     entry_idx = None
     entry_price = None
     entry_atr = None
@@ -474,7 +482,7 @@ def backtest_strategy(signal, ind, rules=None, category=None):
 
         if exit_reason is not None:
             net = today_close / entry_price - 1.0 - ROUND_TRIP_COST
-            trades.append((net, exit_reason))
+            trades.append((net, exit_reason, entry_idx, i))
             entry_idx = None
             entry_price = None
             entry_atr = None
@@ -482,7 +490,7 @@ def backtest_strategy(signal, ind, rules=None, category=None):
     # 收盤仍未平倉的部位：以最後收盤價結算並標記「持有中」
     if entry_idx is not None:
         net = float(close_bt.iloc[-1]) / entry_price - 1.0 - ROUND_TRIP_COST
-        trades.append((net, "持有中（尚未出場）"))
+        trades.append((net, "持有中（尚未出場）", entry_idx, n - 1))
 
     if not trades:
         return result
@@ -490,14 +498,100 @@ def backtest_strategy(signal, ind, rules=None, category=None):
     result["trade_count_1y"] = len(trades)
     result["last_exit_reason"] = trades[-1][1]
     result["win_rate"] = round(
-        sum(1 for r, _ in trades if r > 0) / len(trades), 4
+        sum(1 for r, *_ in trades if r > 0) / len(trades), 4
     )
 
     cumulative = 1.0
-    for r, _ in trades:
+    for r, *_ in trades:
         cumulative *= 1.0 + r
     result["strategy_return_1y"] = round(cumulative - 1.0, 4)
+
+    result.update(_compute_risk_metrics(close_bt, trades))
     return result
+
+
+def _compute_risk_metrics(close_bt, trades):
+    """以每日資金曲線計算 4 個機構級風控指標（純 pandas，零額外套件）。
+
+    - max_drawdown_pct：資金曲線自高點回落的最大百分比（小數，負值表示回撤）。
+    - sharpe_ratio：以日報酬年化（×√252）的風險調整後收益。
+    - profit_factor：總獲利 / 總虧損絕對值（無虧損=9.99、無獲利=0.0）。
+    - oos_return_6m：最近 126 個交易日的樣本外累積報酬（小數）。
+    """
+    metrics = {
+        "max_drawdown_pct": None,
+        "sharpe_ratio": None,
+        "profit_factor": None,
+        "oos_return_6m": None,
+    }
+    if not trades:
+        return metrics
+
+    nets = [t[0] for t in trades]
+
+    # 獲利因子：總獲利 / 總虧損絕對值（無虧損=9.99、無獲利=0.0）
+    gross_profit = sum(r for r in nets if r > 0)
+    gross_loss = abs(sum(r for r in nets if r < 0))
+    if gross_loss > 0:
+        metrics["profit_factor"] = round(gross_profit / gross_loss, 4)
+    elif gross_profit > 0:
+        metrics["profit_factor"] = 9.99
+    else:
+        metrics["profit_factor"] = 0.0
+
+    # 每日標記到市場資金曲線（進場 / 出場皆以當日收盤價結算）
+    n = len(close_bt)
+    equity = [1.0] * n
+    cash = 1.0
+    shares = 0.0
+    entry_equity = 1.0
+    ti = 0
+    for i in range(n):
+        px = float(close_bt.iloc[i])
+        if ti < len(trades) and trades[ti][2] == i:
+            # 今日收盤價進場（進場與出場必為不同交易日）
+            entry_equity = cash
+            shares = cash / px if px else 0.0
+            cash = 0.0
+            equity[i] = entry_equity
+            continue
+        if ti < len(trades) and trades[ti][3] == i:
+            # 今日收盤價出場
+            cash = entry_equity * (1.0 + trades[ti][0])
+            shares = 0.0
+            equity[i] = cash
+            ti += 1
+            continue
+        equity[i] = shares * px if shares > 0 else cash
+
+    equity_series = pd.Series(equity, index=close_bt.index, dtype=float)
+
+    # 最大回撤（負值：自高點回落的幅度）
+    running_peak = equity_series.cummax()
+    drawdown = equity_series / running_peak - 1.0
+    mdd = float(drawdown.min())
+    if math.isfinite(mdd):
+        metrics["max_drawdown_pct"] = round(mdd, 4)
+
+    # 年化夏普比率（252 個交易日）
+    daily_returns = equity_series.pct_change().dropna()
+    if len(daily_returns) >= 2:
+        std = float(daily_returns.std())
+        if std and std > 0:
+            metrics["sharpe_ratio"] = round(
+                float(daily_returns.mean()) / std * math.sqrt(252), 4
+            )
+
+    # 最近 126 個交易日樣本外累積報酬
+    lookback = min(126, len(equity_series))
+    if lookback >= 2:
+        start_equity = float(equity_series.iloc[-lookback])
+        if start_equity and start_equity > 0:
+            metrics["oos_return_6m"] = round(
+                float(equity_series.iloc[-1]) / start_equity - 1.0, 4
+            )
+
+    return metrics
 
 
 def _round_price(value):
@@ -596,6 +690,12 @@ def _fmt_pct(v):
     return f"{v * 100:.1f}%"
 
 
+def _fmt_num(v):
+    if v is None:
+        return "N/A"
+    return f"{v:.2f}"
+
+
 def evaluate_domain_strategy(category, symbol, name, ind, dividend_yield=None,
                              volume_status=None, big_vol_red_candle=False):
     """依六大資產類別實作獨立策略，輸出完整決策欄位。"""
@@ -615,6 +715,10 @@ def evaluate_domain_strategy(category, symbol, name, ind, dividend_yield=None,
             "strategy_return_1y": None,
             "trade_count_1y": 0,
             "last_exit_reason": "無交易",
+            "max_drawdown_pct": None,
+            "sharpe_ratio": None,
+            "profit_factor": None,
+            "oos_return_6m": None,
         },
     }
 
@@ -640,6 +744,10 @@ def evaluate_domain_strategy(category, symbol, name, ind, dividend_yield=None,
                 "strategy_return_1y": bt["strategy_return_1y"],
                 "trade_count_1y": 0,
                 "last_exit_reason": "現金停泊（無出場）",
+                "max_drawdown_pct": bt.get("max_drawdown_pct"),
+                "sharpe_ratio": bt.get("sharpe_ratio"),
+                "profit_factor": bt.get("profit_factor"),
+                "oos_return_6m": bt.get("oos_return_6m"),
             },
         })
         return result
@@ -781,6 +889,8 @@ def save_history(symbol: str, df: pd.DataFrame):
 
     df = df[~df.index.duplicated(keep="last")]
     df.sort_index(inplace=True)
+    # 容量防膨脹鎖：合併去重後只保留最近 MAX_HISTORY_ROWS 個交易日
+    df = df.tail(MAX_HISTORY_ROWS)
     df.to_csv(csv_path, encoding="utf-8")
 
 def compute_signal(category, close, prev_close, ma20, ma60, rsi,
@@ -1028,6 +1138,10 @@ def fetch_and_analyze(category, symbol, name):
             "strategy_return_1y": None,
             "trade_count_1y": 0,
             "last_exit_reason": "無交易",
+            "max_drawdown_pct": None,
+            "sharpe_ratio": None,
+            "profit_factor": None,
+            "oos_return_6m": None,
         },
     }
 
@@ -1264,9 +1378,9 @@ def main():
     for sig, cnt in sorted(summary["signal_counts"].items(), key=lambda x: -x[1]):
         print(f"     {sig}：{cnt} 檔")
 
-    print("\n== 16 檔標的總表（停損價 / 建議倉位 / 勝率 / 交易次數 / 累積報酬）==")
-    print(f"{'標的':<10} {'資料來源':<20} {'停損價':>10} {'建議倉位':>9} {'勝率':>8} {'交易次數':>8} {'累積報酬':>10}")
-    print("-" * 82)
+    print("\n== 16 檔標的總表（停損價 / 建議倉位 / 勝率 / 交易次數 / 累積報酬 / MDD / 夏普 / 獲利因子 / 近半年報酬）==")
+    print(f"{'標的':<10} {'資料來源':<20} {'停損價':>10} {'建議倉位':>9} {'勝率':>8} {'交易次數':>8} {'累積報酬':>10} {'MDD':>9} {'夏普':>7} {'獲利因子':>8} {'近半年':>9}")
+    print("-" * 128)
     for r in all_records:
         bt = r.get("backtest_strategy_1y") or {}
         sl = r.get("stop_loss_price")
@@ -1278,7 +1392,11 @@ def main():
             f"{sl_txt:>10} {w_txt:>9} "
             f"{_fmt_pct(bt.get('win_rate')):>8} "
             f"{str(bt.get('trade_count_1y')):>8} "
-            f"{_fmt_pct(bt.get('strategy_return_1y')):>10}"
+            f"{_fmt_pct(bt.get('strategy_return_1y')):>10} "
+            f"{_fmt_pct(bt.get('max_drawdown_pct')):>9} "
+            f"{_fmt_num(bt.get('sharpe_ratio')):>7} "
+            f"{_fmt_num(bt.get('profit_factor')):>8} "
+            f"{_fmt_pct(bt.get('oos_return_6m')):>9}"
         )
     print("== 量化引擎完成 ==")
 
