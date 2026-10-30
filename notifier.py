@@ -227,6 +227,8 @@ def build_embeds(data):
                 f"🛡 移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**\n"
                 f"📦 建議倉位 **{fmt_weight(it.get('suggested_weight_pct'))}**｜"
                 f"🚪 {bt.get('last_exit_reason') or 'N/A'}｜📊 {it.get('volume_status') or 'N/A'}\n"
+                f"🔭 {it.get('nomad_signal') or '—'}｜短打 +1% **{fmt_num(it.get('nomad_tp_1pct'), 2)}** +3% **{fmt_num(it.get('nomad_tp_3pct'), 2)}** -5% **{fmt_num(it.get('nomad_sl_5pct'), 2)}**\n"
+                f"🧓 茂爺爺 PBR **{fmt_num(it.get('pbr'), 2)}** 殖利 **{fmt_yield(it.get('dividend_yield'))}** 6大 **{fmt_int(it.get('fujimoto_6_checks'))}/6**｜遠藤洋 {it.get('endo_entry_rule') or '—'}\n"
                 f"📝 {it.get('action_reason') or 'N/A'}"
             )
             fields.append({"name": name, "value": value, "inline": False})

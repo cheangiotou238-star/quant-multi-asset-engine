@@ -49,6 +49,20 @@ HISTORY_DIR = os.path.join(".", "data", "history")
 OUTPUT_DIR = os.path.join(".", "public", "data")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "latest_signals.json")
 
+# ===== 歷史訊號與 30/90/180 天驗證帳本（森口亮 Excel 四季報検証用 + 茂爺爺「記錄檢討每天交易」）=====
+LEDGER_FILE = os.path.join(".", "data", "signal_ledger.csv")
+LEDGER_COLUMNS = [
+    "date",
+    "symbol",
+    "close_price",
+    "master_score",
+    "five_dim_avg",
+    "position_stage",
+    "target_price_2",
+    "floor_price",
+    "nomad_signal",
+]
+
 # 本地 CSV 容量防膨脹鎖：每檔只保留最近 N 個交易日（約 4 年日線，足夠計算 MA200 與 1 年回測）
 MAX_HISTORY_ROWS = 1000
 
@@ -138,6 +152,30 @@ STAGE_1 = "1 - 偵察試單 (1/9 倉位)"
 STAGE_2 = "2 - 順勢加碼 (1+2 = 3/9 倉位)"
 STAGE_3 = "3 - 主升滿倉 (1+2+6 = 9/9 倉位)"
 ENDOH_LOW_VOL_LABEL = "地底低量（禁買）"
+
+# ===== 遊牧民（Nomad）「交減陰線」暴漲前兆與買後三大原則 =====
+NOMAD_WASHOUT_VOL_RATIO = 0.25     # 今日量 <= 0.25 × 近10日最大量（量縮黑K）
+NOMAD_WASHOUT_VOL_MA_RATIO = 0.6   # 連續量縮時，今日量 < 0.6 × 20日均量
+NOMAD_SUPPORT_TOLERANCE = 0.03     # MA120 支撐 ±3%
+NOMAD_TP_1PCT = 0.01               # 新手無條件 +1% 停利
+NOMAD_TP_3PCT = 0.03               # 線圖短打 +3% 停利
+NOMAD_SL_5PCT = 0.05               # -5% 誓死停損鐵律
+NOMAD_NEWS_TRAP_GAIN = 0.85        # 距近60日低點上漲 > +85%
+NOMAD_NEWS_TRAP_RSI = 72           # 高檔利多陷阱 RSI 門檻
+
+# ===== 藤本茂（Fujimoto）「6大選股重點」 =====
+FUJIMOTO_CHEAP_FORWARD_PE = 15.0   # 便宜估值：forward PE <= 15
+FUJIMOTO_CHEAP_PBR = 1.0           # 便宜估值：PBR <= 1.0
+FUJIMOTO_RSI_OVERSOLD = 30.0       # RSI 超賣買點
+FUJIMOTO_RSI_OVERBOUGHT = 70.0     # RSI 過熱
+FUJIMOTO_WEEKLY_MA = 4             # 週線 MA4（約日線 MA20）
+
+# ===== 遠藤洋（Endo）「Tenbagger 檢核」 =====
+ENDO_MA = 25                       # 上升模式判定均線 MA25
+ENDO_MIN_DAILY_TURNOVER = 30_000_000  # 單日成交額達標（對應日股 3,000 萬圓流動性）
+# 遠藤洋「小型暴漲股」市值門檻：日股 <= 300 億日圓；美股/其他 <= 100 億美元（中小型成長股）
+ENDO_SMALL_CAP_JPY = 30_000_000_000   # 日股 300 億日圓以下（時価総額）
+ENDO_SMALL_CAP_USD = 10_000_000_000   # 美股/其他中小型成長股：100 億美元以下
 
 
 # ===== 免金鑰全球宏觀與情緒指標（Macro & Sentiment） =====
@@ -371,6 +409,28 @@ def compute_indicators(df):
     # ===== 遊牧民（Nomad）：非典型均線與量能雷達 =====
     for period in NOMAD_MA_PERIODS:
         ind[f"ma{period}"] = close.rolling(period, min_periods=period).mean()
+    # 交減陰線：MA5、MA120 半年線、前一日量變化、近10日最大量、近60日低點
+    ind["ma5"] = close.rolling(5, min_periods=5).mean()
+    ind["ma120"] = close.rolling(120, min_periods=120).mean()
+    ind["vol_drop_prev"] = volume < volume.shift(1)
+    ind["max_vol_10d"] = volume.rolling(10, min_periods=10).max()
+    ind["low_60d"] = low.rolling(60, min_periods=60).min()
+    # 遠藤洋：MA25 上升模式
+    ind["ma25"] = close.rolling(ENDO_MA, min_periods=ENDO_MA).mean()
+
+    # ===== 藤本茂：週 K 趨勢（週線收盤 / 週線 MA4 / 週 RSI） =====
+    try:
+        weekly = close.resample("W-FRI").last().dropna()
+        ind["weekly_close"] = weekly.reindex(ind.index, method="ffill")
+        ind["weekly_ma4"] = (
+            weekly.rolling(FUJIMOTO_WEEKLY_MA, min_periods=FUJIMOTO_WEEKLY_MA).mean()
+            .reindex(ind.index, method="ffill")
+        )
+        ind["weekly_rsi"] = compute_rsi(weekly, 14).reindex(ind.index, method="ffill")
+    except Exception:
+        ind["weekly_close"] = float("nan")
+        ind["weekly_ma4"] = float("nan")
+        ind["weekly_rsi"] = float("nan")
 
     # ===== 藤本茂：MACD(12,26,9) 柱狀圖 =====
     ind["macd"], ind["macd_signal"], ind["macd_hist"] = compute_macd(close)
@@ -1816,6 +1876,210 @@ def _compute_excel_valuation(symbol, category, price, info, ind, latest):
     }
 
 
+def compute_nomad_micro_signals(ind, price):
+    """遊牧民「交減陰線」暴漲前兆 + 買後三大原則 + MetaLab 假利多高檔陷阱。"""
+    result = {
+        "nomad_signal": None,
+        "nomad_tp_1pct": None,
+        "nomad_tp_3pct": None,
+        "nomad_sl_5pct": None,
+        "news_trap_warning": None,
+        "vol_drop_prev": None,
+        "max_vol_10d": None,
+        "max_vol_10d_ratio": None,
+    }
+    if ind is None or ind.empty:
+        return result
+
+    close = ind["close"]
+    open_ = ind["open"]
+    volume = ind["volume"]
+    vol_ma20 = ind["vol_ma20"]
+    max_vol_10d = ind["max_vol_10d"]
+    ma3 = ind["ma3"]
+    ma5 = ind.get("ma5")
+    ma8 = ind["ma8"]
+    ma20 = ind["ma20"]
+    ma120 = ind.get("ma120")
+    high20 = ind.get("high20")
+
+    vol_shrink_2d = (volume < volume.shift(1)) & (volume.shift(1) < volume.shift(2))
+    cond_vol = (volume <= NOMAD_WASHOUT_VOL_RATIO * max_vol_10d) | (
+        vol_shrink_2d & (volume < NOMAD_WASHOUT_VOL_MA_RATIO * vol_ma20)
+    )
+    bearish = close < open_
+
+    band_3_8 = pd.concat([ma3, ma8], axis=1)
+    in_ma3_8 = (close >= band_3_8.min(axis=1)) & (close <= band_3_8.max(axis=1))
+    in_ma5_20 = pd.Series(False, index=ind.index)
+    near_ma120 = pd.Series(False, index=ind.index)
+    if ma5 is not None:
+        band_5_20 = pd.concat([ma5, ma20], axis=1)
+        in_ma5_20 = (close >= band_5_20.min(axis=1)) & (close <= band_5_20.max(axis=1))
+    if ma120 is not None:
+        near_ma120 = (ma120 > 0) & ((close - ma120).abs() / ma120 <= NOMAD_SUPPORT_TOLERANCE)
+    in_support = in_ma3_8 | in_ma5_20 | near_ma120
+    not_at_high = pd.Series(True, index=ind.index)
+    if high20 is not None:
+        not_at_high = close < high20
+
+    washout = cond_vol & bearish & in_support & not_at_high
+    today_washout = bool(washout.iloc[-1]) if len(washout) else False
+    yesterday_washout = bool(washout.iloc[-2]) if len(washout) > 1 else False
+    today_bullish = bool(close.iloc[-1] > open_.iloc[-1]) if len(ind) else False
+
+    if today_washout:
+        result["nomad_signal"] = "🔥 交減陰線 (量縮黑K買點)"
+    elif yesterday_washout and today_bullish:
+        result["nomad_signal"] = "🚀 交減陰線後轉強噴發"
+
+    price = to_float(price)
+    if price is not None:
+        result["nomad_tp_1pct"] = round(price * (1.0 + NOMAD_TP_1PCT), 2)
+        result["nomad_tp_3pct"] = round(price * (1.0 + NOMAD_TP_3PCT), 2)
+        result["nomad_sl_5pct"] = round(price * (1.0 - NOMAD_SL_5PCT), 2)
+
+    if "vol_drop_prev" in ind:
+        result["vol_drop_prev"] = bool(ind["vol_drop_prev"].iloc[-1]) if len(ind) else None
+    mv = to_float(max_vol_10d.iloc[-1]) if max_vol_10d is not None else None
+    vm = to_float(vol_ma20.iloc[-1]) if vol_ma20 is not None else None
+    result["max_vol_10d"] = _round_or_none(mv, 2)
+    result["max_vol_10d_ratio"] = _round_or_none(mv / vm if (mv is not None and vm) else None, 2)
+
+    low_60d = ind.get("low_60d")
+    rsi = ind.get("rsi14")
+    if low_60d is not None and rsi is not None:
+        low60 = to_float(low_60d.iloc[-1])
+        r = to_float(rsi.iloc[-1])
+        c = to_float(close.iloc[-1])
+        if low60 and c and r is not None and (c - low60) / low60 > NOMAD_NEWS_TRAP_GAIN and r > NOMAD_NEWS_TRAP_RSI:
+            result["news_trap_warning"] = "⚠️ 高檔利多鈍化警戒 (勿當分母)"
+
+    return result
+
+
+def compute_fujimoto_micro_signals(latest, info, est, record):
+    """藤本茂「6大選股重點」：PBR + 配息 + 日K/週K共振等，滿分 6 項。"""
+    dividend_yield = to_float(record.get("dividend_yield"))
+    pbr = to_float(record.get("price_to_book"))
+    rsi = to_float(record.get("rsi14"))
+    vol_ratio = to_float(record.get("vol_ratio"))
+    price = to_float(record.get("price"))
+    last_volume = to_float(latest.get("volume"))
+    close = to_float(latest.get("close"))
+    ma20 = to_float(latest.get("ma20"))
+
+    rev_growth_rate = to_float(est.get("rev_growth_3p"))
+    if rev_growth_rate is None:
+        rev_growth_rate = to_float(info.get("revenueGrowth"))
+    profit_growth_rate = to_float(info.get("earningsGrowth"))
+    if profit_growth_rate is None:
+        profit_growth_rate = rev_growth_rate
+    forward_pe = to_float(info.get("forwardPE"))
+
+    weekly_close = to_float(latest.get("weekly_close"))
+    weekly_ma4 = to_float(latest.get("weekly_ma4"))
+    weekly_rsi = to_float(latest.get("weekly_rsi"))
+    weekly_bullish = bool(
+        weekly_close is not None and weekly_ma4 is not None and weekly_rsi is not None
+        and weekly_close > weekly_ma4 and weekly_rsi > 50.0
+    )
+    daily_bullish = bool(close is not None and ma20 is not None and close > ma20)
+
+    daily_turnover_val = price * last_volume if (price is not None and last_volume is not None) else None
+
+    c1 = (rev_growth_rate is not None and rev_growth_rate > 0) and (profit_growth_rate is not None and profit_growth_rate > 0)
+    c2 = dividend_yield is not None and dividend_yield > 0
+    c3 = (forward_pe is not None and forward_pe > 0 and forward_pe <= FUJIMOTO_CHEAP_FORWARD_PE) or (pbr is not None and pbr > 0 and pbr <= FUJIMOTO_CHEAP_PBR)
+    c4 = weekly_bullish and daily_bullish
+    c5 = rsi is not None and (rsi <= FUJIMOTO_RSI_OVERSOLD or (FUJIMOTO_RSI_OVERSOLD < rsi < FUJIMOTO_RSI_OVERBOUGHT))
+    c6 = (vol_ratio is not None and vol_ratio >= 1.0) or (daily_turnover_val is not None and daily_turnover_val >= ENDO_MIN_DAILY_TURNOVER)
+
+    checks = [
+        ("營收獲利雙增", c1),
+        ("配息", c2),
+        ("估值便宜", c3),
+        ("日週K共振", c4),
+        ("RSI買點", c5),
+        ("量能熱絡", c6),
+    ]
+    passed = sum(1 for _, ok in checks if ok)
+
+    return {
+        "weekly_bullish": weekly_bullish,
+        "pbr": _round_or_none(pbr, 4),
+        "fujimoto_6_checks": passed,
+        "fujimoto_checks_detail": [{"label": lbl, "passed": bool(ok)} for lbl, ok in checks],
+        "daily_turnover_val": _round_or_none(daily_turnover_val, 2),
+    }
+
+
+def _endo_small_cap_ok(symbol, market_cap):
+    """遠藤洋「小型暴漲股」市值門檻：日股 <= 300 億日圓，其餘 <= 100 億美元（中小型成長股）。"""
+    if market_cap is None or market_cap <= 0:
+        return None
+    if symbol and str(symbol).endswith(".T"):
+        return bool(market_cap <= ENDO_SMALL_CAP_JPY)
+    return bool(market_cap <= ENDO_SMALL_CAP_USD)
+
+
+def compute_endo_micro_signals(latest, ind, record, info):
+    """遠藤洋「穩賺三倍股 / Tenbagger」入場鐵律檢核（含小型股市值門檻 + 上升模式）。"""
+    close = to_float(latest.get("close"))
+    ma25 = to_float(latest.get("ma25"))
+    price = to_float(record.get("price"))
+    last_volume = to_float(latest.get("volume"))
+    symbol = str(record.get("symbol", ""))
+    info = info or {}
+
+    daily_turnover_val = price * last_volume if (price is not None and last_volume is not None) else None
+    insider_ownership = to_float(info.get("heldPercentInsiders"))
+    market_cap = to_float(info.get("marketCap"))
+    upside_2 = to_float(record.get("upside_2"))
+
+    ma25_slope = None
+    if "ma25" in ind and len(ind) > 1:
+        cur = to_float(ind["ma25"].iloc[-1])
+        prev = to_float(ind["ma25"].iloc[-2])
+        if cur is not None and prev is not None:
+            ma25_slope = cur - prev
+
+    # 上升模式：Close >= MA25 且 MA25 上揚（遠藤洋入場鐵律，否則太早投資 NG）
+    uptrend = bool(
+        close is not None and ma25 is not None and close >= ma25
+        and ma25_slope is not None and ma25_slope > 0
+    )
+    small_cap_ok = _endo_small_cap_ok(symbol, market_cap)
+    turnover_ok = bool(daily_turnover_val is not None and daily_turnover_val >= ENDO_MIN_DAILY_TURNOVER)
+    insider_ok = bool(insider_ownership is not None and insider_ownership > 0)
+    upside_ok = upside_2 is not None and upside_2 >= 1.0
+
+    entry_rule = None
+    if close is None or ma25 is None:
+        entry_rule = None
+    elif not uptrend:
+        entry_rule = "⏳ 太早投資NG！等上漲趨勢確立"
+    elif small_cap_ok and upside_ok:
+        entry_rule = "✅ 上升模式確立 (小型股翻倍潛力)"
+    elif not small_cap_ok and upside_ok:
+        entry_rule = "🟢 上升模式確立（非小型股，續抱觀察）"
+    else:
+        entry_rule = "🟢 上升模式確立（續抱觀察）"
+
+    return {
+        "endo_entry_rule": entry_rule,
+        "endo_uptrend": uptrend,
+        "endo_small_cap_ok": small_cap_ok,
+        "endo_turnover_ok": turnover_ok,
+        "endo_insider_ok": insider_ok,
+        "ma25": _round_or_none(ma25, 4),
+        "ma25_slope": _round_or_none(ma25_slope, 4),
+        "daily_turnover_val": _round_or_none(daily_turnover_val, 2),
+        "insider_ownership": _round_or_none(insider_ownership, 4),
+        "market_cap": _round_or_none(market_cap, 2),
+    }
+
+
 def fetch_and_analyze(category, symbol, name):
     """抓取單一標的歷史與基本面，計算指標並回傳最新一筆記錄。"""
     record = {
@@ -1865,6 +2129,26 @@ def fetch_and_analyze(category, symbol, name):
         "suggested_weight_pct": None,
         "volume_status": None,
         "exit_rule_desc": None,
+        "ma5": None,
+        "ma120": None,
+        "ma25": None,
+        "vol_drop_prev": None,
+        "max_vol_10d": None,
+        "max_vol_10d_ratio": None,
+        "nomad_signal": None,
+        "nomad_tp_1pct": None,
+        "nomad_tp_3pct": None,
+        "nomad_sl_5pct": None,
+        "news_trap_warning": None,
+        "weekly_bullish": None,
+        "pbr": None,
+        "fujimoto_6_checks": None,
+        "fujimoto_checks_detail": None,
+        "endo_entry_rule": None,
+        "ma25_slope": None,
+        "daily_turnover_val": None,
+        "insider_ownership": None,
+        "market_cap": None,
         "backtest_strategy_1y": {
             "win_rate": None,
             "strategy_return_1y": None,
@@ -1901,11 +2185,20 @@ def fetch_and_analyze(category, symbol, name):
 
         # 基本面資訊（僅 Yahoo 來源具備完整基本面；幣安/本地快取設為 None）
         info = {}
+        est = {}
         if data_source == SOURCE_YAHOO:
             info = fetch_fundamentals(symbol)
-            record["dividend_yield"] = normalize_yield(info.get("dividendYield"))
+            _defaults, _overrides = _custom_estimates()
+            est = dict(_defaults)
+            est.update(_overrides.get(symbol, {}))
+            record["dividend_yield"] = normalize_yield(
+                est.get("dividend_yield") if est.get("dividend_yield") is not None else info.get("dividendYield")
+            )
             record["trailing_pe"] = to_float(info.get("trailingPE"))
-            record["price_to_book"] = to_float(info.get("priceToBook"))
+            record["price_to_book"] = to_float(
+                est.get("pbr") if est.get("pbr") is not None else info.get("priceToBook")
+            )
+            record["market_cap"] = to_float(info.get("marketCap"))
         else:
             record["dividend_yield"] = None
             record["trailing_pe"] = None
@@ -1989,10 +2282,13 @@ def fetch_and_analyze(category, symbol, name):
         prev_high20 = to_float(prev_ind.get("high20"))
 
         last_ma3 = to_float(latest.get("ma3"))
+        last_ma5 = to_float(latest.get("ma5"))
         last_ma8 = to_float(latest.get("ma8"))
         last_ma15 = to_float(latest.get("ma15"))
+        last_ma25 = to_float(latest.get("ma25"))
         last_ma33 = to_float(latest.get("ma33"))
         last_ma45 = to_float(latest.get("ma45"))
+        last_ma120 = to_float(latest.get("ma120"))
         last_vol_ratio = to_float(latest.get("vol_ratio"))
         last_tenkan = to_float(latest.get("tenkan_sen"))
         last_kijun = to_float(latest.get("kijun_sen"))
@@ -2020,10 +2316,13 @@ def fetch_and_analyze(category, symbol, name):
         )
 
         record["ma3"] = round(last_ma3, 4) if last_ma3 is not None else None
+        record["ma5"] = round(last_ma5, 4) if last_ma5 is not None else None
         record["ma8"] = round(last_ma8, 4) if last_ma8 is not None else None
         record["ma15"] = round(last_ma15, 4) if last_ma15 is not None else None
+        record["ma25"] = round(last_ma25, 4) if last_ma25 is not None else None
         record["ma33"] = round(last_ma33, 4) if last_ma33 is not None else None
         record["ma45"] = round(last_ma45, 4) if last_ma45 is not None else None
+        record["ma120"] = round(last_ma120, 4) if last_ma120 is not None else None
         record["vol_ratio"] = round(last_vol_ratio, 4) if last_vol_ratio is not None else None
         record["tenkan_sen"] = round(last_tenkan, 4) if last_tenkan is not None else None
         record["kijun_sen"] = round(last_kijun, 4) if last_kijun is not None else None
@@ -2046,6 +2345,11 @@ def fetch_and_analyze(category, symbol, name):
             last_rsi, last_macd, last_macd_hist, last_vol_ratio,
             record.get("backtest_strategy_1y"),
         )
+
+        # ===== 三大微觀實戰訊號：遊牧民交減陰線 × 藤本茂6大重點 × 遠藤洋Tenbagger =====
+        record.update(compute_nomad_micro_signals(ind, record["price"]))
+        record.update(compute_fujimoto_micro_signals(latest, info, est, record))
+        record.update(compute_endo_micro_signals(latest, ind, record, info))
 
         # 除權息還原校正：以當日未還原現價比例，將還原價位換算回真實看盤報價
         if last_close and raw_last_close:
@@ -2125,6 +2429,192 @@ def build_summary(records):
     }
 
 
+def append_signal_ledger(records):
+    """將最新訊號追加寫入 data/signal_ledger.csv（以 date + symbol 去重）。
+
+    落實茂爺爺第 5 大投資術「記錄、檢討每天的交易」與森口亮 Excel
+    「四季報検証用」的歷史追蹤：每次執行產出最新訊號時，把當日各標的
+    關鍵訊號存成一列，供 _evaluate_historical_ledger 計算後續驗證績效。
+    """
+    if not records:
+        return
+    os.makedirs(os.path.dirname(LEDGER_FILE), exist_ok=True)
+    today = datetime.date.today().isoformat()
+
+    existing = set()
+    if os.path.exists(LEDGER_FILE):
+        try:
+            prev = pd.read_csv(LEDGER_FILE, dtype=str)
+            for _, row in prev.iterrows():
+                existing.add((str(row.get("date", "")).strip(), str(row.get("symbol", "")).strip()))
+        except Exception:
+            existing = set()
+
+    new_rows = []
+    for rec in records:
+        symbol = str(rec.get("symbol", ""))
+        if (today, symbol) in existing:
+            continue
+        five_dim = rec.get("five_dim_scores") or {}
+        five_dim_avg = to_float(five_dim.get("average"))
+        new_rows.append({
+            "date": today,
+            "symbol": symbol,
+            "close_price": _round_or_none(rec.get("price"), 4),
+            "master_score": _round_or_none(rec.get("master_score"), 2),
+            "five_dim_avg": _round_or_none(five_dim_avg, 2),
+            "position_stage": rec.get("position_stage"),
+            "target_price_2": _round_or_none(rec.get("target_price_2"), 4),
+            "floor_price": _round_or_none(rec.get("floor_price"), 4),
+            "nomad_signal": rec.get("nomad_signal"),
+        })
+        existing.add((today, symbol))
+
+    if not new_rows:
+        print(f"    signal_ledger 今日（{today}）已記錄，無新增")
+        return
+
+    header = not os.path.exists(LEDGER_FILE) or os.path.getsize(LEDGER_FILE) == 0
+    pd.DataFrame(new_rows, columns=LEDGER_COLUMNS).to_csv(
+        LEDGER_FILE, mode="a", header=header, index=False, encoding="utf-8"
+    )
+    print(f"    signal_ledger 追加 {len(new_rows)} 筆（{today}）")
+
+
+def _evaluate_historical_ledger():
+    """讀取 data/signal_ledger.csv 與 data/history/*.csv，計算歷史訊號驗證摘要。
+
+    每個歷史訊號發出後迄今：
+      - MFE%（期間最高價漲幅） = 訊號日後最高價 / 進場價 - 1
+      - MAE%（期間最低價回撤） = 訊號日後最低價 / 進場價 - 1
+      - 目前累積報酬率（%）   = 最新收盤 / 進場價 - 1
+      - 另提供 30 / 90 / 180 天前向驗證報酬。
+    """
+    summary = {
+        "total_signals": 0,
+        "evaluated": 0,
+        "overall": {
+            "avg_mfe_pct": None,
+            "avg_mae_pct": None,
+            "avg_current_return_pct": None,
+            "win_rate_pct": None,
+        },
+        "by_symbol": {},
+        "rows": [],
+    }
+    if not os.path.exists(LEDGER_FILE):
+        return summary
+
+    try:
+        ledger = pd.read_csv(LEDGER_FILE, dtype={"symbol": str})
+    except Exception:
+        return summary
+    if ledger.empty:
+        return summary
+
+    ledger["date"] = pd.to_datetime(ledger["date"], errors="coerce")
+    ledger["close_price"] = pd.to_numeric(ledger["close_price"], errors="coerce")
+
+    history_cache = {}
+
+    def _load_history(symbol):
+        if symbol in history_cache:
+            return history_cache[symbol]
+        df = None
+        path = os.path.join(HISTORY_DIR, f"{symbol}.csv")
+        if os.path.exists(path):
+            try:
+                df = pd.read_csv(path, index_col=0, parse_dates=True)
+                cols = [c for c in ("High", "Low", "Close") if c in df.columns]
+                if cols:
+                    df = df[cols].astype(float).dropna()
+            except Exception:
+                df = None
+        history_cache[symbol] = df
+        return df
+
+    rows = []
+    for _, row in ledger.iterrows():
+        symbol = str(row.get("symbol", ""))
+        sig_date = row.get("date")
+        entry = to_float(row.get("close_price"))
+        if pd.isna(sig_date) or entry is None or entry <= 0:
+            continue
+        df = _load_history(symbol)
+        if df is None or df.empty:
+            continue
+
+        # 訊號於收盤後發出，故績效自「訊號日之後」開始計算
+        future = df[df.index > sig_date]
+        if future.empty:
+            continue
+
+        mfe = to_float((future["High"].max() / entry - 1.0) * 100.0)
+        mae = to_float((future["Low"].min() / entry - 1.0) * 100.0)
+        cur = to_float((future["Close"].iloc[-1] / entry - 1.0) * 100.0)
+
+        def _fwd_return(days):
+            target = sig_date + pd.Timedelta(days=days)
+            sub = df[df.index >= target]
+            if sub.empty:
+                return None
+            return to_float((sub["Close"].iloc[0] / entry - 1.0) * 100.0)
+
+        rows.append({
+            "date": sig_date.strftime("%Y-%m-%d"),
+            "symbol": symbol,
+            "mfe_pct": _round_or_none(mfe, 2),
+            "mae_pct": _round_or_none(mae, 2),
+            "current_return_pct": _round_or_none(cur, 2),
+            "return_30d_pct": _round_or_none(_fwd_return(30), 2),
+            "return_90d_pct": _round_or_none(_fwd_return(90), 2),
+            "return_180d_pct": _round_or_none(_fwd_return(180), 2),
+        })
+
+    summary["total_signals"] = len(ledger)
+    summary["evaluated"] = len(rows)
+
+    per_symbol = {}
+    for r in rows:
+        bucket = per_symbol.setdefault(r["symbol"], {
+            "signals": 0, "mfe_pct": [], "mae_pct": [], "current_return_pct": [],
+        })
+        bucket["signals"] += 1
+        if r["mfe_pct"] is not None:
+            bucket["mfe_pct"].append(r["mfe_pct"])
+        if r["mae_pct"] is not None:
+            bucket["mae_pct"].append(r["mae_pct"])
+        if r["current_return_pct"] is not None:
+            bucket["current_return_pct"].append(r["current_return_pct"])
+
+    by_symbol = {}
+    for sym, bucket in per_symbol.items():
+        wins = sum(1 for v in bucket["current_return_pct"] if v > 0)
+        by_symbol[sym] = {
+            "signals": bucket["signals"],
+            "avg_mfe_pct": _round_or_none(sum(bucket["mfe_pct"]) / len(bucket["mfe_pct"]) if bucket["mfe_pct"] else None, 2),
+            "avg_mae_pct": _round_or_none(sum(bucket["mae_pct"]) / len(bucket["mae_pct"]) if bucket["mae_pct"] else None, 2),
+            "avg_current_return_pct": _round_or_none(sum(bucket["current_return_pct"]) / len(bucket["current_return_pct"]) if bucket["current_return_pct"] else None, 2),
+            "win_rate_pct": _round_or_none(wins / len(bucket["current_return_pct"]) * 100.0 if bucket["current_return_pct"] else None, 2),
+        }
+    summary["by_symbol"] = by_symbol
+
+    all_mfe = [r["mfe_pct"] for r in rows if r["mfe_pct"] is not None]
+    all_mae = [r["mae_pct"] for r in rows if r["mae_pct"] is not None]
+    all_cur = [r["current_return_pct"] for r in rows if r["current_return_pct"] is not None]
+    wins_all = sum(1 for v in all_cur if v > 0)
+    summary["overall"] = {
+        "avg_mfe_pct": _round_or_none(sum(all_mfe) / len(all_mfe) if all_mfe else None, 2),
+        "avg_mae_pct": _round_or_none(sum(all_mae) / len(all_mae) if all_mae else None, 2),
+        "avg_current_return_pct": _round_or_none(sum(all_cur) / len(all_cur) if all_cur else None, 2),
+        "win_rate_pct": _round_or_none(wins_all / len(all_cur) * 100.0 if all_cur else None, 2),
+    }
+
+    # 僅保留最近 200 筆明細，避免 JSON 過度膨脹
+    summary["rows"] = rows[-200:]
+    return summary
+
+
 def main():
     # 強制 UTF-8 輸出，避免 Windows cp950 主控台無法編碼 emoji
     if hasattr(sys.stdout, "reconfigure"):
@@ -2167,10 +2657,19 @@ def main():
     for r in all_records:
         r["suggested_weight_pct"] = weights.get(r["symbol"])
 
+    # ===== 歷史訊號與 30/90/180 天驗證帳本：追加當日訊號並計算 MFE / MAE / 累積報酬 =====
+    append_signal_ledger(all_records)
+    ledger_summary = _evaluate_historical_ledger()
+    print(
+        f"    歷史訊號帳本：共 {ledger_summary.get('total_signals', 0)} 筆，"
+        f"已驗證 {ledger_summary.get('evaluated', 0)} 筆"
+    )
+
     payload = {
         "generated_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "summary": summary,
         "macro_overview": macro_overview,
+        "ledger_summary": ledger_summary,
         "assets": assets,
     }
 

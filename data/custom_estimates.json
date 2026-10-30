@@ -14,6 +14,8 @@
       "eps_next": null,
       "rev_growth_3p": null,
       "op_margin": null,
+      "pbr": null,
+      "dividend_yield": null,
       "earnings_date": "2026-08-26"
     },
     "AAPL": {
@@ -25,6 +27,8 @@
       "eps_next": null,
       "rev_growth_3p": null,
       "op_margin": null,
+      "pbr": null,
+      "dividend_yield": null,
       "earnings_date": "2026-07-30"
     },
     "2330.TW": {
@@ -36,6 +40,8 @@
       "eps_next": null,
       "rev_growth_3p": null,
       "op_margin": null,
+      "pbr": null,
+      "dividend_yield": null,
       "earnings_date": "2026-07-16"
     }
   }

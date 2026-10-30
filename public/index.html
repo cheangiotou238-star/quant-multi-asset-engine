@@ -191,6 +191,8 @@
   .five-dim .dim .lbl { color: var(--muted); }
   .five-dim .bar { width: 44px; height: 6px; background: #EEE5CF; border-radius: 3px; overflow: hidden; }
   .five-dim .bar i { display: block; height: 100%; background: var(--gold); }
+  .sniper { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 8px; background: linear-gradient(180deg, #FFFDF8, #F7F0DC); }
+  .sniper .sniper-title { font-size: 0.8rem; font-weight: 700; color: #8a6d1a; margin-bottom: 4px; }
   footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: 0.8rem; }
 </style>
 </head>
@@ -205,6 +207,7 @@
   </section>
   <div class="summary" id="summary"></div>
   <section class="master-table" id="masterTable"></section>
+  <section class="master-table" id="ledgerSection" style="display:none;"></section>
   <div class="grid" id="grid"></div>
   <footer>Quant Multi-Asset Engine · 資料來源 Yahoo Finance</footer>
 
@@ -284,6 +287,29 @@
       return price > ma ? "↑站上" : "↓跌破";
     }
     function cloudLabel(c) { return c || "N/A"; }
+    function fmtFujimoto(v) {
+      if (v === null || v === undefined) return "N/A";
+      return v + "/6";
+    }
+    function fmtTurnover(v) {
+      if (v === null || v === undefined) return "N/A";
+      const n = Number(v);
+      if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      return n.toFixed(0);
+    }
+    function fmtMktCap(v) {
+      if (v === null || v === undefined) return "N/A";
+      const n = Number(v);
+      if (n >= 1e12) return (n / 1e12).toFixed(2) + "T";
+      if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      return n.toFixed(0);
+    }
+    function fmtBool(v) {
+      if (v === null || v === undefined) return "N/A";
+      return v ? "✅" : "❌";
+    }
     function fmtRuleOf40(v) {
       if (v === null || v === undefined) return "N/A";
       return Number(v).toFixed(1) + "%";
@@ -382,6 +408,52 @@
       });
     }
 
+    function renderLedger(data) {
+      const el = document.getElementById("ledgerSection");
+      const ls = data.ledger_summary;
+      if (!ls || (!ls.total_signals && !ls.evaluated)) {
+        el.style.display = "none";
+        return;
+      }
+      el.style.display = "block";
+      const ov = ls.overall || {};
+      const pct = v => (v === null || v === undefined)
+        ? "N/A"
+        : (Number(v) >= 0 ? "+" : "") + Number(v).toFixed(2) + "%";
+      const wp = v => (v === null || v === undefined) ? "N/A" : Number(v).toFixed(1) + "%";
+      let html = `<h2>📒 歷史訊號與 30/90/180 天驗證帳本</h2>`;
+      html += `<div class="summary" style="margin-bottom:12px;">`;
+      html += `<div class="chip">📒 歷史訊號 ${ls.total_signals ?? 0} 筆</div>`;
+      html += `<div class="chip">✅ 已驗證 ${ls.evaluated ?? 0} 筆</div>`;
+      html += `<div class="chip">平均 MFE ${pct(ov.avg_mfe_pct)}</div>`;
+      html += `<div class="chip">平均 MAE ${pct(ov.avg_mae_pct)}</div>`;
+      html += `<div class="chip">平均累積報酬 ${pct(ov.avg_current_return_pct)}</div>`;
+      html += `<div class="chip">目前勝率 ${wp(ov.win_rate_pct)}</div>`;
+      html += `</div>`;
+
+      const by = ls.by_symbol || {};
+      const syms = Object.keys(by);
+      if (syms.length) {
+        html += `<table><thead><tr><th>標的</th><th>訊號數</th><th>平均 MFE%</th><th>平均 MAE%</th><th>平均累積報酬</th><th>勝率</th></tr></thead><tbody>`;
+        for (const s of syms) {
+          const b = by[s];
+          html += `<tr><td>${s}</td><td>${b.signals}</td><td>${pct(b.avg_mfe_pct)}</td><td>${pct(b.avg_mae_pct)}</td><td>${pct(b.avg_current_return_pct)}</td><td>${wp(b.win_rate_pct)}</td></tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+
+      const rows = ls.rows || [];
+      if (rows.length) {
+        html += `<div style="margin-top:10px;font-size:0.8rem;color:var(--muted);">近期驗證明細（最多 200 筆）</div>`;
+        html += `<table><thead><tr><th>日期</th><th>標的</th><th>MFE%</th><th>MAE%</th><th>累積報酬</th><th>30日</th><th>90日</th><th>180日</th></tr></thead><tbody>`;
+        for (const r of rows) {
+          html += `<tr><td>${r.date}</td><td>${r.symbol}</td><td>${pct(r.mfe_pct)}</td><td>${pct(r.mae_pct)}</td><td>${pct(r.current_return_pct)}</td><td>${pct(r.return_30d_pct)}</td><td>${pct(r.return_90d_pct)}</td><td>${pct(r.return_180d_pct)}</td></tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+      el.innerHTML = html;
+    }
+
     function renderMacro(macro) {
       const el = document.getElementById("macro");
       const grid = document.getElementById("macroGrid");
@@ -421,6 +493,7 @@
 
       renderMacro(data.macro_overview);
       renderMasterTable(data);
+      renderLedger(data);
 
       const grid = document.getElementById("grid");
       grid.innerHTML = "";
@@ -484,6 +557,33 @@
                 </div>
                 ${fiveDimHtml(it)}
               </div>
+              <div class="sniper">
+                <div class="sniper-title">🔭 實戰狙擊面板（遊牧民 × 茂爺爺 × 遠藤洋）</div>
+                <div class="metrics">
+                  <span>遊牧民 <b>${it.nomad_signal || "—"}</b></span>
+                  <span>${it.news_trap_warning || ""}</span>
+                </div>
+                <div class="metrics">
+                  <span>+1%停利 <b>${fmt(it.nomad_tp_1pct)}</b></span>
+                  <span>+3%停利 <b>${fmt(it.nomad_tp_3pct)}</b></span>
+                  <span>-5%停損 <b>${fmt(it.nomad_sl_5pct)}</b></span>
+                </div>
+                <div class="metrics">
+                  <span>茂爺爺 PBR <b>${fmt(it.pbr)}</b></span>
+                  <span>配息率 <b>${fmtYield(it.dividend_yield)}</b></span>
+                  <span>6大重點 <b>${fmtFujimoto(it.fujimoto_6_checks)}</b></span>
+                </div>
+                <div class="metrics">
+                  <span>遠藤洋 <b>${it.endo_entry_rule || "—"}</b></span>
+                </div>
+                <div class="metrics">
+                  <span>上升模式 <b>${fmtBool(it.endo_uptrend)}</b></span>
+                  <span>小型股檢核 <b>${fmtBool(it.endo_small_cap_ok)}</b></span>
+                  <span>市值 <b>${fmtMktCap(it.market_cap)}</b></span>
+                  <span>成交額 <b>${fmtTurnover(it.daily_turnover_val)}</b></span>
+                  <span>內部人持股 <b>${fmtRate(it.insider_ownership)}</b></span>
+                </div>
+              </div>
               <div class="masters">
                 <div class="master-row">
                   <span class="score-badge ${scoreClass(it.master_score)}">🎯 五師評分 ${fmtInt(it.master_score)}</span>
@@ -493,7 +593,12 @@
                   <span>遊牧民 MA3 <b>${fmt(it.ma3)}</b> ${maVsPrice(it.price, it.ma3)}</span>
                   <span>MA8 <b>${fmt(it.ma8)}</b> ${maVsPrice(it.price, it.ma8)}</span>
                   <span>MA15 <b>${fmt(it.ma15)}</b> ${maVsPrice(it.price, it.ma15)}</span>
+                  <span>MA120 <b>${fmt(it.ma120)}</b> ${maVsPrice(it.price, it.ma120)}</span>
+                </div>
+                <div class="metrics">
                   <span>量能倍數 <b>${fmtVolRatio(it.vol_ratio)}</b></span>
+                  <span>前日量縮 <b>${fmtBool(it.vol_drop_prev)}</b></span>
+                  <span>近10日最大量 <b>${fmt(it.max_vol_10d)}</b></span>
                 </div>
                 <div class="metrics">
                   <span>茂爺爺一目均衡 <b>${cloudLabel(it.ichimoku_cloud)}</b></span>
