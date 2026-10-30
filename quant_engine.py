@@ -319,16 +319,24 @@ def to_float(value):
 
 
 def normalize_yield(value):
-    """將 yfinance 的 dividendYield 正規化為小數（0.0641 表示 6.41%）。
+    """將 yfinance 殖利率正規化為小數（0.0046 表示 0.46%、0.0641 表示 6.41%）。
 
-    yfinance 不同版本對 dividendYield 的表示方式不一：可能回傳小數
-    （0.0641）或百分比（6.41）。此處統一轉為小數，以利後續判斷與顯示。
+    yfinance 對殖利率的表示方式隨版本與標的不同而異：
+    - trailingAnnualDividendYield：固定為小數（0.0046 = 0.46%）。
+    - dividendYield：部分美股 / ETF 已回傳百分比數值（0.46 = 0.46%），
+      部分標的仍是小數（0.057 = 5.7%）。
+
+    統一策略：個股 / ETF 年化殖利率理應落在 0.02%~2.0%（小數 0.0002~0.02），
+    絕不可能超過 20%。因此凡數值 > 0.2 皆視為百分比格式（除以 100 還原），
+    僅 0 < 值 <= 0.2 視為小數直接採用。
     """
     f = to_float(value)
     if f is None:
         return None
-    # 殖利率不可能 >= 100%（小數即 >= 1.0），若 > 1 代表是百分比格式，需除以 100
-    if f > 1.0:
+    if f <= 0.0:
+        return 0.0
+    # 殖利率 > 20%（小數 0.2）不合理，必為百分比格式，除以 100 還原為小數
+    if f > 0.2:
         return f / 100.0
     return f
 
@@ -1756,8 +1764,142 @@ def _grade_for(average):
     return "D級"
 
 
-def _compute_excel_valuation(symbol, category, price, info, ind, latest):
-    """Excel 數學估值：目標價①② / 地板價 / 40%法則 / 森口亮五維度評分（1~10）。"""
+def _cash_parking_valuation(close_adj, ma200, rsi, high20, vol_pctl, ma200_bias):
+    """SGOV 現金停泊資金池：無目標價 / 無停損，僅保留五維度技術評分供一致性。"""
+    scores = _five_dim_scores_technical(ma200_bias, rsi, vol_pctl, close_adj, high20)
+    average = max(1.0, min(10.0, round(sum(scores.values()) / 5.0, 2)))
+    return {
+        "valuation_model": "現金停泊資金池（無目標價 / 無停損）",
+        "eps_mid": None,
+        "eps_current": None,
+        "eps_next": None,
+        "base_per": None,
+        "compound_years": None,
+        "profit_growth_rate": None,
+        "target_per": None,
+        "per_high_avg": None,
+        "per_low_avg": None,
+        "target_price_1": None,
+        "upside_1": None,
+        "target_price_2": None,
+        "upside_2": None,
+        "floor_price": None,
+        "downside_risk": None,
+        "rule_of_40": None,
+        "rule_of_40_met": False,
+        "earnings_date": None,
+        "check_90d": None,
+        "check_180d": None,
+        "five_dim_scores": {
+            "growth": _round_or_none(scores["growth"], 2),
+            "profitability": _round_or_none(scores["profitability"], 2),
+            "undervaluation": _round_or_none(scores["undervaluation"], 2),
+            "safety": _round_or_none(scores["safety"], 2),
+            "explosive": _round_or_none(scores["explosive"], 2),
+            "average": average,
+            "grade": _grade_for(average),
+            "is_a_plus": bool(average >= EXCEL_GRADE_A_PLUS),
+        },
+    }
+
+
+def _reit_yield_spread_valuation(symbol, price, dividend_yield, pbr, us10y,
+                                 ind, latest, ma200_bias, close_adj, rsi,
+                                 high20, vol_pctl):
+    """REITs 專屬估值：股息殖利率利差模型 + PBR 淨值折溢價。
+
+    - 利差 = 標的殖利率 - 10Y 美債殖利率（正利差 = 收息吸引力高於無風險利率）。
+    - 合理目標價：以「殖利率壓縮至 target_yield」反推（價格漲、殖利率降）。
+    - 收息地板價：以「殖利率擴張至 floor_yield」反推（價格跌、殖利率升）。
+    - 無殖利率時退回 MA200 ± 2×ATR 波段區間，徹底避免負 EPS × PER 的負目標價。
+    """
+    atr = to_float(latest.get("atr14"))
+    ma200 = to_float(latest.get("ma200"))
+    dy = to_float(dividend_yield)
+    us10y_dec = to_float(us10y)
+    if us10y_dec is not None and us10y_dec > 1.0:
+        us10y_dec = us10y_dec / 100.0  # 保險：若誤傳百分比數值（4.9）轉為小數
+
+    yield_spread = None
+    target_price_1 = target_price_2 = floor_price = None
+    upside_1 = upside_2 = downside_risk = None
+
+    if dy is not None and dy > 0 and price is not None and price > 0:
+        if us10y_dec is not None:
+            yield_spread = dy - us10y_dec
+        dps = price * dy                      # 以現價回推年化每股配息
+        target_yield = max(dy * 0.85, 0.01)   # 上檔：殖利率壓縮 15%
+        floor_yield = max(dy * 1.30, 0.01)    # 下檔：殖利率擴張 30%（收息地板）
+        target_price_2 = dps / target_yield
+        target_price_1 = target_price_2 * 1.06
+        floor_price = dps / floor_yield
+        if target_price_2 and price:
+            upside_2 = (target_price_2 - price) / price
+        if target_price_1 and price:
+            upside_1 = (target_price_1 - price) / price
+        if floor_price and price:
+            downside_risk = (floor_price - price) / price
+    elif ma200 is not None and atr is not None and price is not None and price > 0:
+        target_price_2 = ma200 + 2.0 * atr
+        target_price_1 = ma200 + 3.0 * atr
+        floor_price = ma200 - 2.0 * atr
+        upside_2 = (target_price_2 - price) / price
+        upside_1 = (target_price_1 - price) / price
+        downside_risk = (floor_price - price) / price
+
+    pbr_f = to_float(pbr)
+    pbr_discount = None
+    if pbr_f is not None:
+        pbr_discount = pbr_f < 1.0
+
+    scores = _five_dim_scores_technical(ma200_bias, rsi, vol_pctl, close_adj, high20)
+    average = max(1.0, min(10.0, round(sum(scores.values()) / 5.0, 2)))
+
+    return {
+        "valuation_model": "股息殖利率利差模型 + PBR 淨值折溢價",
+        "yield_spread": _round_or_none(yield_spread, 4),
+        "pbr_discount": pbr_discount,
+        "eps_mid": None,
+        "eps_current": None,
+        "eps_next": None,
+        "base_per": None,
+        "compound_years": None,
+        "profit_growth_rate": None,
+        "target_per": None,
+        "per_high_avg": None,
+        "per_low_avg": None,
+        "target_price_1": _round_or_none(target_price_1, 4),
+        "upside_1": _round_or_none(upside_1, 4),
+        "target_price_2": _round_or_none(target_price_2, 4),
+        "upside_2": _round_or_none(upside_2, 4),
+        "floor_price": _round_or_none(floor_price, 4),
+        "downside_risk": _round_or_none(downside_risk, 4),
+        "rule_of_40": None,
+        "rule_of_40_met": False,
+        "earnings_date": None,
+        "check_90d": None,
+        "check_180d": None,
+        "five_dim_scores": {
+            "growth": _round_or_none(scores["growth"], 2),
+            "profitability": _round_or_none(scores["profitability"], 2),
+            "undervaluation": _round_or_none(scores["undervaluation"], 2),
+            "safety": _round_or_none(scores["safety"], 2),
+            "explosive": _round_or_none(scores["explosive"], 2),
+            "average": average,
+            "grade": _grade_for(average),
+            "is_a_plus": bool(average >= EXCEL_GRADE_A_PLUS),
+        },
+    }
+
+
+def _compute_excel_valuation(symbol, category, price, info, ind, latest,
+                             dividend_yield=None, pbr=None, us10y=None):
+    """Excel 數學估值：目標價①② / 地板價 / 40%法則 / 森口亮五維度評分（1~10）。
+
+    - Stocks：森口亮基本面數學估值（複利目標 PER + 40% 法則）。
+    - REITs：股息殖利率利差模型 + PBR 淨值折溢價（不套用負 EPS × PER）。
+    - SGOV（現金停泊池）：無目標價 / 無停損。
+    """
     info = info or {}
     price = to_float(price)
     defaults, overrides = _custom_estimates()
@@ -1804,7 +1946,19 @@ def _compute_excel_valuation(symbol, category, price, info, ind, latest):
     if close_adj is not None and ma200 is not None and ma200 > 0:
         ma200_bias = (close_adj - ma200) / ma200
 
-    if eps_mid is not None and price is not None and price > 0 and category in FUNDAMENTAL_CATEGORIES:
+    # 💵 現金停泊資金池：不輸出任何漲跌目標價 / 停損價
+    if symbol in CASH_PARKING_SYMBOLS:
+        return _cash_parking_valuation(close_adj, ma200, rsi, high20, vol_pctl, ma200_bias)
+
+    # 🏢 REITs：股息殖利率利差模型 + PBR 淨值折溢價（廢除股票複利 PER 目標價）
+    if category == "REITs":
+        return _reit_yield_spread_valuation(
+            symbol, price, dividend_yield, pbr, us10y, ind, latest,
+            ma200_bias, close_adj, rsi, high20, vol_pctl,
+        )
+
+    # 🧱 個股：EPS <= 0 時禁用負 EPS × PER（避免負目標價），退回技術估值
+    if category == "Stocks" and eps_mid is not None and eps_mid > 0 and price is not None and price > 0:
         model = "基本面數學估值（Excel 公式）"
         trailing_pe = to_float(info.get("trailingPE"))
         per_high_avg = to_float(est.get("per_high_avg"))
@@ -2080,7 +2234,353 @@ def compute_endo_micro_signals(latest, ind, record, info):
     }
 
 
-def fetch_and_analyze(category, symbol, name):
+# ===== 六大資產專屬量化模型與專屬指標區塊（domain_metrics） =====
+
+def _dm(label, value, kind="text"):
+    """建構 domain_metrics 的單一指標項目。"""
+    return {"label": label, "value": value, "kind": kind}
+
+
+def _ma_bias_pct(close_adj, ma200):
+    """MA200 乖離率（%）。"""
+    if close_adj is None or ma200 is None or ma200 == 0:
+        return None
+    return round((close_adj - ma200) / ma200 * 100.0, 2)
+
+
+def _set_domain_metric(record, label, value):
+    """依 label 更新 record["domain_metrics"] 中對應指標的 value。"""
+    for section in (record.get("domain_metrics") or []):
+        for item in section.get("items", []):
+            if item.get("label") == label:
+                item["value"] = value
+
+
+def compute_domain_model(category, symbol, record, ind, latest, macro_overview=None):
+    """依六大資產類別產生專屬 asset_model_type 與 domain_metrics 區塊。"""
+    macro = macro_overview or {}
+    close_adj = to_float(latest.get("close"))
+    ma200 = to_float(record.get("ma200"))
+    ma200_bias = _ma_bias_pct(close_adj, ma200)
+
+    if category == "Stocks":
+        return _domain_stocks(record)
+    if category == "Crypto":
+        return _domain_crypto(record, macro)
+    if category == "REITs":
+        return _domain_reits(record, macro, ma200_bias)
+    if category == "Bonds":
+        if symbol in CASH_PARKING_SYMBOLS:
+            return _domain_cash_pool(record)
+        return _domain_bonds(record, macro, ma200_bias)
+    if category == "ETFs":
+        return _domain_etfs(record, macro, ma200_bias)
+    if category == "Gold":
+        return _domain_gold(record, macro, close_adj, ma200)
+    return {"asset_model_type": "generic", "domain_metrics": []}
+
+
+def _domain_stocks(record):
+    fd = record.get("five_dim_scores") or {}
+    return {
+        "asset_model_type": "stock_fundamental_tech",
+        "domain_metrics": [
+            {
+                "title": "森口亮 Excel 估值",
+                "items": [
+                    _dm("目標價①", record.get("target_price_1"), "price"),
+                    _dm("目標價②", record.get("target_price_2"), "price"),
+                    _dm("預測低點", record.get("floor_price"), "price"),
+                    _dm("複利目標 PER", record.get("target_per"), "num"),
+                    _dm("40% 法則", record.get("rule_of_40"), "pct"),
+                    _dm("五維度評分", fd.get("average"), "score"),
+                    _dm("評等", fd.get("grade"), "text"),
+                ],
+            },
+            {
+                "title": "遠藤洋上升模式與小型股檢核",
+                "items": [
+                    _dm("上升模式", record.get("endo_uptrend"), "bool"),
+                    _dm("小型股檢核", record.get("endo_small_cap_ok"), "bool"),
+                    _dm("入場鐵律", record.get("endo_entry_rule"), "text"),
+                ],
+            },
+            {
+                "title": "茂爺爺 6 大重點",
+                "items": [
+                    _dm("PBR", record.get("price_to_book"), "num"),
+                    _dm("配息率", record.get("dividend_yield"), "yield"),
+                    _dm("週 K 共振", record.get("weekly_bullish"), "bool"),
+                    _dm("6 大重點通過", record.get("fujimoto_6_checks"), "score6"),
+                ],
+            },
+            {
+                "title": "遊牧民交減陰線與量比",
+                "items": [
+                    _dm("交減陰線訊號", record.get("nomad_signal"), "signal"),
+                    _dm("量能倍數", record.get("vol_ratio"), "num"),
+                    _dm("前日量縮", record.get("vol_drop_prev"), "bool"),
+                ],
+            },
+        ],
+    }
+
+
+def _domain_crypto(record, macro):
+    fng = macro.get("crypto_fear_greed")
+    fng_class = macro.get("crypto_fear_greed_classification")
+    resonance = None
+    if fng is not None and record.get("nomad_signal"):
+        if fng <= 25:
+            resonance = "🟢 恐慌 + 交減陰線 → 低吸契機"
+        elif fng >= 75:
+            resonance = "🔴 貪婪 + 短打 → 嚴守停利"
+        else:
+            resonance = "⚪ 中性 → 區間短打"
+    elif fng is not None:
+        resonance = fng_class or str(fng)
+
+    close = to_float(record.get("price"))
+    ma200 = to_float(record.get("ma200"))
+    long_short = None
+    if close is not None and ma200 is not None:
+        long_short = close >= ma200
+
+    return {
+        "asset_model_type": "crypto_momentum_nomad",
+        "domain_metrics": [
+            {
+                "title": "遊牧民短打雷達",
+                "items": [
+                    _dm("MA3", record.get("ma3"), "price"),
+                    _dm("MA8", record.get("ma8"), "price"),
+                    _dm("MA15", record.get("ma15"), "price"),
+                    _dm("MA120", record.get("ma120"), "price"),
+                    _dm("量能倍數", record.get("vol_ratio"), "num"),
+                    _dm("前日量縮", record.get("vol_drop_prev"), "bool"),
+                    _dm("交減陰線訊號", record.get("nomad_signal"), "signal"),
+                ],
+            },
+            {
+                "title": "短打價位（遊牧民）",
+                "items": [
+                    _dm("+1% 停利", record.get("nomad_tp_1pct"), "price"),
+                    _dm("+3% 停利", record.get("nomad_tp_3pct"), "price"),
+                    _dm("-5% 鐵律停損", record.get("nomad_sl_5pct"), "price"),
+                ],
+            },
+            {
+                "title": "幣圈恐慌貪婪指數共振",
+                "items": [
+                    _dm("恐慌貪婪指數", fng, "num"),
+                    _dm("分類", fng_class, "text"),
+                    _dm("共振訊號", resonance, "signal"),
+                ],
+            },
+            {
+                "title": "cis 突破與 ATR 移動停利",
+                "items": [
+                    _dm("20 日高點突破", record.get("near_20d_high_breakout"), "bool"),
+                    _dm("HIGH20", record.get("high20"), "price"),
+                    _dm("ATR 移動停利", record.get("trailing_stop_price"), "price"),
+                    _dm("MA200 長線多空", long_short, "bool"),
+                ],
+            },
+        ],
+    }
+
+
+def _domain_reits(record, macro, ma200_bias):
+    us10y = macro.get("us10y_yield")
+    dy = to_float(record.get("dividend_yield"))
+    spread = to_float(record.get("yield_spread"))
+    pbr = to_float(record.get("price_to_book"))
+    pbr_state = None
+    if pbr is not None:
+        pbr_state = "折價安全" if pbr < 1.0 else "溢價偏高"
+    return {
+        "asset_model_type": "reit_yield_nav",
+        "domain_metrics": [
+            {
+                "title": "股息殖利率利差模型",
+                "items": [
+                    _dm("標的殖利率", dy, "yield"),
+                    _dm("10Y 美債殖利率", us10y, "pct"),
+                    _dm("利差 (Yield Spread)", spread, "yield"),
+                ],
+            },
+            {
+                "title": "茂爺爺 PBR 淨值折溢價",
+                "items": [
+                    _dm("PBR", pbr, "num"),
+                    _dm("折溢價狀態", pbr_state, "text"),
+                ],
+            },
+            {
+                "title": "合理目標價與收息地板價",
+                "items": [
+                    _dm("合理目標價", record.get("target_price_2"), "price"),
+                    _dm("收息地板價", record.get("floor_price"), "price"),
+                    _dm("MA200 乖離率", ma200_bias, "pct"),
+                ],
+            },
+        ],
+    }
+
+
+def _domain_cash_pool(record):
+    return {
+        "asset_model_type": "cash_parking_pool",
+        "domain_metrics": [
+            {
+                "title": "現金停泊資金池",
+                "items": [
+                    _dm("年化配息殖利率", record.get("dividend_yield"), "yield"),
+                    _dm("全市場建議現金停泊比例", record.get("suggested_weight_pct"), "pct"),
+                    _dm("銀彈狀態", "隨時可轉入風險資產", "text"),
+                ],
+            },
+        ],
+    }
+
+
+def _domain_bonds(record, macro, ma200_bias):
+    us10y = macro.get("us10y_yield")
+    rate_state = None
+    if us10y is not None:
+        if us10y < 4.0:
+            rate_state = "寬鬆"
+        elif us10y <= 5.0:
+            rate_state = "中性"
+        else:
+            rate_state = "高壓"
+    rsi = to_float(record.get("rsi14"))
+    oversold = rsi is not None and rsi < 30.0
+    return {
+        "asset_model_type": "bond_macro_duration",
+        "domain_metrics": [
+            {
+                "title": "10Y 美債殖利率宏觀壓力",
+                "items": [
+                    _dm("10Y 殖利率", us10y, "pct"),
+                    _dm("殖利率狀態", rate_state, "text"),
+                ],
+            },
+            {
+                "title": "MA200 均值回歸乖離率",
+                "items": [
+                    _dm("MA200 年線", record.get("ma200"), "price"),
+                    _dm("乖離率", ma200_bias, "pct"),
+                ],
+            },
+            {
+                "title": "茂爺爺 RSI 超賣買點與一目均衡",
+                "items": [
+                    _dm("RSI", rsi, "num"),
+                    _dm("一目均衡", record.get("ichimoku_cloud"), "text"),
+                    _dm("超賣買點", oversold, "bool"),
+                ],
+            },
+            {
+                "title": "波段支撐與壓力",
+                "items": [
+                    _dm("支撐", record.get("boll_lower"), "price"),
+                    _dm("壓力", record.get("boll_upper"), "price"),
+                ],
+            },
+        ],
+    }
+
+
+def _domain_etfs(record, macro, ma200_bias):
+    vix = macro.get("vix")
+    vix_zone = macro.get("vix_zone")
+    position = None
+    if vix is not None:
+        if vix < 15:
+            position = "1:2:6 主升滿倉 (9/9)"
+        elif vix <= 25:
+            position = "1:2:6 順勢加碼 (3/9)"
+        else:
+            position = "1:2:6 觀望 / 偵察試單 (1/9)"
+    bt = record.get("backtest_strategy_1y") or {}
+    mdd = bt.get("max_drawdown_pct")
+    mdd_pct = _round_or_none(mdd * 100.0, 2) if mdd is not None else None
+    return {
+        "asset_model_type": "etf_index_allocation",
+        "domain_metrics": [
+            {
+                "title": "MA200 年線乖離率",
+                "items": [
+                    _dm("MA200 年線", record.get("ma200"), "price"),
+                    _dm("乖離率", ma200_bias, "pct"),
+                ],
+            },
+            {
+                "title": "VIX 恐慌指數 → 藤本茂 1:2:6 倉位階梯",
+                "items": [
+                    _dm("VIX", vix, "num"),
+                    _dm("VIX 區間", vix_zone, "text"),
+                    _dm("倉位階梯", position, "text"),
+                ],
+            },
+            {
+                "title": "1 年回測績效",
+                "items": [
+                    _dm("年化夏普", bt.get("sharpe_ratio"), "num"),
+                    _dm("MDD", mdd_pct, "pct"),
+                    _dm("獲利因子", bt.get("profit_factor"), "num"),
+                ],
+            },
+            {
+                "title": "波段通道高低點",
+                "items": [
+                    _dm("通道高點", record.get("boll_upper"), "price"),
+                    _dm("通道低點", record.get("boll_lower"), "price"),
+                ],
+            },
+        ],
+    }
+
+
+def _domain_gold(record, macro, close_adj, ma200):
+    dxy = macro.get("dxy")
+    us10y = macro.get("us10y_yield")
+    dxy_state = None
+    if dxy is not None:
+        dxy_state = "強勢美元（金價承壓）" if dxy >= 100.0 else "弱勢美元（金價受惠）"
+    rate_state = None
+    if us10y is not None:
+        rate_state = "高實質利率（金價承壓）" if us10y >= 4.0 else "低利率環境（金價受惠）"
+    long_short = None
+    if close_adj is not None and ma200 is not None:
+        long_short = close_adj >= ma200
+    return {
+        "asset_model_type": "gold_macro_turtle",
+        "domain_metrics": [
+            {
+                "title": "宏觀避險雙因子",
+                "items": [
+                    _dm("美元指數 DXY", dxy, "num"),
+                    _dm("DXY 狀態", dxy_state, "text"),
+                    _dm("10Y 美債殖利率", us10y, "pct"),
+                    _dm("殖利率狀態", rate_state, "text"),
+                ],
+            },
+            {
+                "title": "cis 海龜突破通道",
+                "items": [
+                    _dm("HIGH20 突破價", record.get("high20"), "price"),
+                    _dm("20 日高點突破", record.get("near_20d_high_breakout"), "bool"),
+                    _dm("ATR 移動停利", record.get("trailing_stop_price"), "price"),
+                    _dm("MA200 長線多空", long_short, "bool"),
+                ],
+            },
+        ],
+    }
+
+
+def fetch_and_analyze(category, symbol, name, macro_overview=None):
     """抓取單一標的歷史與基本面，計算指標並回傳最新一筆記錄。"""
     record = {
         "symbol": symbol,
@@ -2191,9 +2691,13 @@ def fetch_and_analyze(category, symbol, name):
             _defaults, _overrides = _custom_estimates()
             est = dict(_defaults)
             est.update(_overrides.get(symbol, {}))
-            record["dividend_yield"] = normalize_yield(
-                est.get("dividend_yield") if est.get("dividend_yield") is not None else info.get("dividendYield")
-            )
+            # 殖利率優先取 trailingAnnualDividendYield（固定小數），再退回 dividendYield 並做合理性判斷
+            raw_yield = est.get("dividend_yield")
+            if raw_yield is None:
+                raw_yield = info.get("trailingAnnualDividendYield")
+            if raw_yield is None:
+                raw_yield = info.get("dividendYield")
+            record["dividend_yield"] = normalize_yield(raw_yield)
             record["trailing_pe"] = to_float(info.get("trailingPE"))
             record["price_to_book"] = to_float(
                 est.get("pbr") if est.get("pbr") is not None else info.get("priceToBook")
@@ -2255,7 +2759,12 @@ def fetch_and_analyze(category, symbol, name):
         record["boll_lower"] = round(last_boll_lower, 4) if last_boll_lower is not None else None
 
         # ===== Excel 數學估值：目標價①② / 地板價 / 40%法則 / 森口亮五維度評分 =====
-        record.update(_compute_excel_valuation(symbol, category, record["price"], info, ind, latest))
+        record.update(_compute_excel_valuation(
+            symbol, category, record["price"], info, ind, latest,
+            dividend_yield=record.get("dividend_yield"),
+            pbr=record.get("price_to_book"),
+            us10y=(macro_overview or {}).get("us10y_yield"),
+        ))
 
         # 第 5 章：月均量流動性濾網 + 爆量長紅偵測
         volume_status, big_vol_red_candle = volume_analysis(latest, rules)
@@ -2350,6 +2859,16 @@ def fetch_and_analyze(category, symbol, name):
         record.update(compute_nomad_micro_signals(ind, record["price"]))
         record.update(compute_fujimoto_micro_signals(latest, info, est, record))
         record.update(compute_endo_micro_signals(latest, ind, record, info))
+
+        # ===== 六大資產專屬量化模型與專屬指標區塊（asset_model_type + domain_metrics）=====
+        domain = compute_domain_model(category, symbol, record, ind, latest, macro_overview)
+        record["asset_model_type"] = domain["asset_model_type"]
+        record["domain_metrics"] = domain["domain_metrics"]
+
+        # 💵 現金停泊資金池：禁止顯示漲跌目標價與 -5% 停損
+        if symbol in CASH_PARKING_SYMBOLS:
+            for _key in ("nomad_tp_1pct", "nomad_tp_3pct", "nomad_sl_5pct"):
+                record[_key] = None
 
         # 除權息還原校正：以當日未還原現價比例，將還原價位換算回真實看盤報價
         if last_close and raw_last_close:
@@ -2623,20 +3142,6 @@ def main():
     ensure_dirs()
     print("== 量化引擎啟動 ==")
 
-    assets = {}
-    all_records = []
-    for category, symbols in ASSET_UNIVERSE.items():
-        print(f"\n[{category}]")
-        assets[category] = []
-        for symbol, name in symbols.items():
-            print(f"  - {symbol} ({name})")
-            record = fetch_and_analyze(category, symbol, name)
-            assets[category].append(record)
-            all_records.append(record)
-            time.sleep(POLITE_SLEEP_SECONDS)  # 【硬傷1】禮貌延遲，避免觸發 Yahoo 頻率限制
-
-    summary = build_summary(all_records)
-
     print("\n== 全球宏觀與市場情緒溫度計 ==")
     macro_overview = fetch_macro_overview()
     tnx = macro_overview.get("us10y_yield")
@@ -2652,10 +3157,26 @@ def main():
         f"（{macro_overview.get('crypto_fear_greed_classification') or 'N/A'}）"
     )
 
+    assets = {}
+    all_records = []
+    for category, symbols in ASSET_UNIVERSE.items():
+        print(f"\n[{category}]")
+        assets[category] = []
+        for symbol, name in symbols.items():
+            print(f"  - {symbol} ({name})")
+            record = fetch_and_analyze(category, symbol, name, macro_overview)
+            assets[category].append(record)
+            all_records.append(record)
+            time.sleep(POLITE_SLEEP_SECONDS)  # 【硬傷1】禮貌延遲，避免觸發 Yahoo 頻率限制
+
+    summary = build_summary(all_records)
+
     # 建議資金配置權重（逆波動率 Risk-Parity + 宏觀利率調節，16 檔總和 100%）
     weights = compute_suggested_weights(all_records, macro_overview)
     for r in all_records:
         r["suggested_weight_pct"] = weights.get(r["symbol"])
+        if r.get("asset_model_type") == "cash_parking_pool":
+            _set_domain_metric(r, "全市場建議現金停泊比例", r["suggested_weight_pct"])
 
     # ===== 歷史訊號與 30/90/180 天驗證帳本：追加當日訊號並計算 MFE / MAE / 累積報酬 =====
     append_signal_ledger(all_records)

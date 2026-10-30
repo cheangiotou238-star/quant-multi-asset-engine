@@ -6,10 +6,10 @@
   },
   "overrides": {
     "NVDA": {
-      "base_per": 28.0,
+      "base_per": null,
       "compound_years": 3,
-      "per_high_avg": 60.0,
-      "per_low_avg": 32.0,
+      "per_high_avg": null,
+      "per_low_avg": null,
       "eps_current": null,
       "eps_next": null,
       "rev_growth_3p": null,

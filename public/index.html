@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>六大資產量化戰情室</title>
+<title>多資產量化戰情室</title>
 <style>
   :root {
-    --ivory: #FAF6EE;        /* 象牙白 */
-    --ivory-card: #FFFDF8;   /* 卡片底 */
-    --gold: #C9A227;         /* 香檳金 */
-    --gold-soft: #E7D6A8;    /* 淡金 */
-    --dark: #3B3B3B;         /* 深灰字體 */
+    --ivory: #FAF6EE;
+    --ivory-card: #FFFDF8;
+    --gold: #C9A227;
+    --gold-soft: #E7D6A8;
+    --dark: #3B3B3B;
     --muted: #7A7A7A;
     --green: #2E7D32;
     --blue: #1E5AA8;
@@ -25,6 +25,8 @@
     font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
     padding: 24px;
     line-height: 1.5;
+    max-width: 1120px;
+    margin: 0 auto;
   }
   header { text-align: center; margin-bottom: 26px; }
   header h1 {
@@ -37,10 +39,7 @@
   }
   header .subtitle { color: var(--muted); margin-top: 10px; font-size: 0.9rem; }
 
-  .summary {
-    display: flex; flex-wrap: wrap; gap: 10px;
-    justify-content: center; margin-bottom: 28px;
-  }
+  .summary { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 26px; }
   .summary .chip {
     background: var(--ivory-card);
     border: 1px solid var(--gold);
@@ -65,12 +64,7 @@
     margin-bottom: 14px;
     text-align: center;
   }
-  .macro-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
-  }
+  .macro-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
   .macro-item {
     flex: 1 1 180px;
     min-width: 150px;
@@ -80,125 +74,129 @@
     padding: 12px 14px;
     text-align: center;
   }
-  .macro-item .macro-label {
-    font-size: 0.78rem;
-    color: var(--muted);
-    margin-bottom: 6px;
+  .macro-item .macro-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
+  .macro-item .macro-value { font-family: Georgia, "Times New Roman", serif; font-size: 1.15rem; font-weight: 600; }
+  /* 一級主分頁 */
+  .main-tabs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 16px; }
+  .main-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 10px 18px; border: 1px solid var(--gold); border-radius: 999px;
+    background: var(--ivory-card); color: var(--dark);
+    font-size: 0.95rem; font-family: inherit; cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .macro-item .macro-value {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--dark);
+  .main-tab .cnt { font-size: 0.74rem; color: var(--muted); background: #F0EADB; border-radius: 999px; padding: 1px 8px; }
+  .main-tab:hover { background: #F8F2E2; }
+  .main-tab.active {
+    background: linear-gradient(180deg, #FBF3D5, #E7D6A8);
+    border-color: var(--gold); color: #8a6d1a; font-weight: 700;
+    box-shadow: 0 2px 8px rgba(201,162,39,0.25);
   }
+  .main-tab.active .cnt { color: #8a6d1a; background: #F4E9C8; }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 20px;
+  /* 二級標的子分頁膠囊 */
+  .sub-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 22px; padding: 12px 14px;
+    background: var(--ivory-card); border: 1px solid var(--gold-soft); border-radius: 14px;
   }
-  .card {
+  .sub-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 14px; border: 1px solid var(--gold-soft); border-radius: 999px;
+    background: #FFF; color: var(--dark); font-size: 0.85rem;
+    font-family: inherit; cursor: pointer; transition: all 0.15s ease;
+  }
+  .sub-tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gray); }
+  .sub-tab .dot.green { background: var(--green); }
+  .sub-tab .dot.blue { background: var(--blue); }
+  .sub-tab .dot.yellow { background: var(--yellow); }
+  .sub-tab .dot.red { background: var(--red); }
+  .sub-tab .dot.fire { background: #B45309; }
+  .sub-tab:hover { border-color: var(--gold); }
+  .sub-tab.active { background: var(--dark); color: #FFF; border-color: var(--dark); }
+
+  /* 高留白卡片 */
+  .symbol-card {
     background: var(--ivory-card);
     border: 1px solid var(--gold);
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+    border-radius: 16px;
+    padding: 28px 30px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.07);
   }
-  .card h2 {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 1.15rem;
-    padding: 14px 18px;
+  .symbol-head {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 20px; padding-bottom: 16px;
     border-bottom: 1px solid var(--gold-soft);
-    background: linear-gradient(180deg, #FFFDF8, #F5EEDC);
-    letter-spacing: 1px;
   }
-  .asset { padding: 12px 18px; border-bottom: 1px dashed var(--gold-soft); }
-  .asset:last-child { border-bottom: none; }
-  .asset .row1 {
-    display: flex; justify-content: space-between;
-    align-items: center; gap: 8px; flex-wrap: wrap;
-  }
-  .asset .name { font-weight: 600; }
-  .asset .sym { color: var(--muted); font-size: 0.82rem; margin-left: 5px; }
-  .tag {
-    font-size: 0.76rem; padding: 2px 10px;
-    border-radius: 999px; white-space: nowrap; border: 1px solid;
-  }
+  .symbol-name { font-family: Georgia, "Times New Roman", serif; font-size: 1.4rem; letter-spacing: 1px; }
+  .symbol-sym { color: var(--muted); font-size: 0.85rem; margin-left: 8px; }
+  .symbol-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  .tag { font-size: 0.78rem; padding: 3px 12px; border-radius: 999px; white-space: nowrap; border: 1px solid; }
   .tag.green  { color: var(--green);  border-color: var(--green);  background: #EAF4EA; }
   .tag.blue   { color: var(--blue);   border-color: var(--blue);   background: #E8F0FA; }
   .tag.yellow { color: var(--yellow); border-color: var(--yellow); background: #FAF3DE; }
   .tag.red    { color: var(--red);    border-color: var(--red);    background: #FAE9E9; }
   .tag.gray   { color: var(--gray);   border-color: var(--gray);   background: #F0F0F0; }
-  .tag.fire   { color: #B45309;   border-color: #B45309;   background: #FEF3E2; }
-  .asset .metrics {
-    margin-top: 6px; font-size: 0.84rem;
-    display: flex; flex-wrap: wrap; gap: 4px 14px;
+  .tag.fire   { color: #B45309;       border-color: #B45309;       background: #FEF3E2; }
+
+  .model-badge {
+    display: inline-block; font-size: 0.76rem; font-weight: 600;
+    padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--gold-soft); background: #F8F2E2; color: #8a6d1a;
   }
-  .asset .reason {
-    margin-top: 6px; font-size: 0.8rem; color: var(--muted);
-  }
-  .up   { color: var(--green); }
-  .down { color: var(--red); }
-  .flat { color: var(--muted); }
-  .score-badge {
-    display: inline-block; font-size: 0.82rem; font-weight: 700;
-    padding: 2px 10px; border-radius: 999px; border: 1px solid; white-space: nowrap;
-  }
+  .score-badge { display: inline-block; font-size: 0.82rem; font-weight: 700; padding: 3px 12px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
   .score-badge.green  { color: var(--green);  border-color: var(--green);  background: #EAF4EA; }
   .score-badge.blue   { color: var(--blue);   border-color: var(--blue);   background: #E8F0FA; }
   .score-badge.yellow { color: var(--yellow); border-color: var(--yellow); background: #FAF3DE; }
   .score-badge.red    { color: var(--red);    border-color: var(--red);    background: #FAE9E9; }
   .score-badge.gray   { color: var(--gray);   border-color: var(--gray);   background: #F0F0F0; }
-  .asset .masters {
-    margin-top: 8px; padding: 8px 10px;
-    border: 1px dashed var(--gold-soft); border-radius: 8px;
-    background: linear-gradient(180deg, #FFFDF8, #F8F2E2);
+  .core-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px 26px; margin-bottom: 20px; }
+  .metric .m-label { font-size: 0.76rem; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.5px; }
+  .metric .m-value { font-size: 1.05rem; font-weight: 600; }
+  .up   { color: var(--green); }
+  .down { color: var(--red); }
+  .flat { color: var(--muted); }
+
+  .reason-note {
+    font-size: 0.85rem; color: var(--muted);
+    margin-bottom: 22px; padding: 10px 14px;
+    border-left: 3px solid var(--gold); background: #FAF6EE; border-radius: 6px;
   }
-  .asset .master-row {
-    display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
+
+  .deepdive h3 { font-family: Georgia, "Times New Roman", serif; font-size: 1.05rem; letter-spacing: 1px; margin-bottom: 16px; color: #8a6d1a; }
+  .d-section {
+    margin-bottom: 18px; padding: 16px 18px;
+    border: 1px dashed var(--gold-soft); border-radius: 12px;
+    background: linear-gradient(180deg, #FFFDF8, #FAF5E8);
   }
-  .asset .stage { font-size: 0.8rem; color: var(--dark); }
-  .master-table {
+  .d-section h4 { font-size: 0.9rem; font-weight: 700; color: var(--dark); margin-bottom: 12px; letter-spacing: 0.5px; }
+  .d-items { display: flex; flex-wrap: wrap; gap: 12px 28px; }
+  .d-item { display: flex; flex-direction: column; gap: 3px; min-width: 140px; }
+  .d-item .d-label { font-size: 0.75rem; color: var(--muted); }
+  .d-item .d-value { font-size: 0.95rem; font-weight: 600; }
+  .empty { color: var(--muted); font-size: 0.85rem; }
+
+  .ledger { margin-top: 26px; }
+  .ledger summary {
+    cursor: pointer; font-family: Georgia, "Times New Roman", serif;
+    font-size: 1rem; letter-spacing: 1px; color: var(--dark); padding: 8px 0;
+  }
+  .ledger .ledger-body {
     background: var(--ivory-card); border: 1px solid var(--gold);
-    border-radius: 12px; padding: 16px 18px; margin-bottom: 26px;
+    border-radius: 12px; padding: 16px 18px; margin-top: 10px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.06); overflow-x: auto;
   }
-  .master-table h2 {
-    font-family: Georgia, "Times New Roman", serif; font-size: 1.05rem;
-    letter-spacing: 1px; margin-bottom: 12px; text-align: center;
-  }
-  .master-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  .master-table th, .master-table td {
-    padding: 7px 9px; border-bottom: 1px dashed var(--gold-soft); text-align: left;
-  }
-  .master-table th { color: var(--muted); font-weight: 600; white-space: nowrap; }
-  .master-table th.sortable { cursor: pointer; user-select: none; }
-  .master-table th.sortable:hover { color: var(--gold); }
-  .master-table .stage-cell { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
-  .champagne {
-    display: inline-block; font-size: 0.78rem; font-weight: 700;
-    padding: 2px 8px; border-radius: 999px; border: 1px solid var(--gold);
-    background: linear-gradient(180deg, #FBF3D5, #E7D6A8); color: #8a6d1a; white-space: nowrap;
-  }
-  .grade-aplus {
-    display: inline-block; font-size: 0.76rem; font-weight: 700; color: #8a6d1a;
-    background: linear-gradient(180deg, #FBF3D5, #E7D6A8); border: 1px solid var(--gold);
-    border-radius: 999px; padding: 2px 8px; white-space: nowrap;
-  }
-  .valuation { margin-top: 6px; padding: 6px 10px; border: 1px dashed var(--gold-soft); border-radius: 8px; }
-  .five-dim { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 0.76rem; }
-  .five-dim .dim { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .five-dim .dim .lbl { color: var(--muted); }
-  .five-dim .bar { width: 44px; height: 6px; background: #EEE5CF; border-radius: 3px; overflow: hidden; }
-  .five-dim .bar i { display: block; height: 100%; background: var(--gold); }
-  .sniper { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 8px; background: linear-gradient(180deg, #FFFDF8, #F7F0DC); }
-  .sniper .sniper-title { font-size: 0.8rem; font-weight: 700; color: #8a6d1a; margin-bottom: 4px; }
+  .ledger table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .ledger th, .ledger td { padding: 7px 9px; border-bottom: 1px dashed var(--gold-soft); text-align: left; }
+  .ledger th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+
   footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: 0.8rem; }
 </style>
 </head>
 <body>
   <header>
-    <h1>📊 六大資產量化戰情室</h1>
+    <h1>📊 多資產量化戰情室</h1>
     <div class="subtitle" id="subtitle">載入中…</div>
   </header>
   <section class="macro-card" id="macro" style="display:none;">
@@ -206,17 +204,33 @@
     <div class="macro-grid" id="macroGrid"></div>
   </section>
   <div class="summary" id="summary"></div>
-  <section class="master-table" id="masterTable"></section>
-  <section class="master-table" id="ledgerSection" style="display:none;"></section>
-  <div class="grid" id="grid"></div>
+
+  <nav class="main-tabs" id="mainTabs"></nav>
+  <nav class="sub-tabs" id="subTabs"></nav>
+  <div id="content"></div>
+
+  <details class="ledger" id="ledgerWrap" style="display:none;">
+    <summary>📒 歷史訊號與 30/90/180 天驗證帳本</summary>
+    <div class="ledger-body" id="ledgerBody"></div>
+  </details>
+
   <footer>Quant Multi-Asset Engine · 資料來源 Yahoo Finance</footer>
 
   <script>
     const CATEGORY_ORDER = ["Crypto", "Stocks", "REITs", "Bonds", "ETFs", "Gold"];
-    const CATEGORY_ICON = {
-      Crypto: "🪙", Stocks: "📈", REITs: "🏢", Bonds: "📜", ETFs: "🧺", Gold: "🥇"
+    const CATEGORY_ICON = { Crypto: "🪙", Stocks: "📈", REITs: "🏢", Bonds: "📜", ETFs: "🧺", Gold: "🥇" };
+    const MODEL_LABEL = {
+      crypto_momentum_nomad: "幣圈動能 × 遊牧民",
+      stock_fundamental_tech: "基本面 × 技術",
+      reit_yield_nav: "殖利率利差 × 淨值",
+      bond_macro_duration: "債券宏觀 × 存續期間",
+      cash_parking_pool: "現金停泊資金池",
+      etf_index_allocation: "指數配置",
+      gold_macro_turtle: "黃金宏觀 × 海龜",
+      generic: "通用模型"
     };
 
+    let state = { data: null, cat: null, sym: null };
     function tagClass(signal) {
       if (!signal) return "gray";
       if (signal.startsWith("🟢")) return "green";
@@ -226,54 +240,9 @@
       if (signal.startsWith("🔥")) return "fire";
       return "gray";
     }
-
-    function fmt(v, d = 2) {
-      if (v === null || v === undefined) return "N/A";
-      return Number(v).toFixed(d);
-    }
-    function fmtPct(v) {
-      if (v === null || v === undefined) return "N/A";
-      const n = Number(v);
-      return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
-    }
-    function fmtYield(v) {
-      if (v === null || v === undefined) return "N/A";
-      return (Number(v) * 100).toFixed(2) + "%";
-    }
-    function fmtRate(v) {
-      if (v === null || v === undefined) return "N/A";
-      return (Number(v) * 100).toFixed(1) + "%";
-    }
-    function fmtRateSigned(v) {
-      if (v === null || v === undefined) return "N/A";
-      const n = Number(v) * 100;
-      return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
-    }
-    function fmtRatio(v) {
-      if (v === null || v === undefined) return "N/A";
-      return Number(v).toFixed(2);
-    }
-    function fmtWeight(v) {
-      if (v === null || v === undefined) return "N/A";
-      return Number(v).toFixed(2) + "%";
-    }
-    function maTrend(ma20, ma60) {
-      if (ma20 === null || ma60 === null || ma20 === undefined || ma60 === undefined) return "N/A";
-      if (ma20 > ma60) return "多頭排列 ↑";
-      if (ma20 < ma60) return "空頭排列 ↓";
-      return "均線糾結";
-    }
     function changeClass(v) {
       if (v === null || v === undefined) return "flat";
       return v >= 0 ? "up" : "down";
-    }
-    function fmtInt(v) {
-      if (v === null || v === undefined) return "N/A";
-      return Number(v).toFixed(0);
-    }
-    function fmtVolRatio(v) {
-      if (v === null || v === undefined) return "N/A";
-      return Number(v).toFixed(2) + "x";
     }
     function scoreClass(s) {
       if (s === null || s === undefined) return "gray";
@@ -282,185 +251,155 @@
       if (s >= 40) return "yellow";
       return "red";
     }
-    function maVsPrice(price, ma) {
-      if (price === null || price === undefined || ma === null || ma === undefined) return "";
-      return price > ma ? "↑站上" : "↓跌破";
+    function fmt(v, d) {
+      if (v === null || v === undefined) return null;
+      return Number(v).toFixed(d === undefined ? 2 : d);
     }
-    function cloudLabel(c) { return c || "N/A"; }
-    function fmtFujimoto(v) {
-      if (v === null || v === undefined) return "N/A";
-      return v + "/6";
-    }
-    function fmtTurnover(v) {
-      if (v === null || v === undefined) return "N/A";
+    function fmtSignedPct(v) {
+      if (v === null || v === undefined) return null;
       const n = Number(v);
-      if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
-      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-      return n.toFixed(0);
+      return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
     }
-    function fmtMktCap(v) {
-      if (v === null || v === undefined) return "N/A";
-      const n = Number(v);
-      if (n >= 1e12) return (n / 1e12).toFixed(2) + "T";
-      if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
-      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-      return n.toFixed(0);
+    function fmtWeight(v) {
+      if (v === null || v === undefined) return null;
+      return Number(v).toFixed(2) + "%";
     }
-    function fmtBool(v) {
-      if (v === null || v === undefined) return "N/A";
-      return v ? "✅" : "❌";
+    function fmtInt(v) {
+      if (v === null || v === undefined) return null;
+      return Number(v).toFixed(0);
     }
-    function fmtRuleOf40(v) {
-      if (v === null || v === undefined) return "N/A";
-      return Number(v).toFixed(1) + "%";
+    function maTrend(ma20, ma60) {
+      if (ma20 === null || ma60 === null || ma20 === undefined || ma60 === undefined) return null;
+      if (ma20 > ma60) return "多頭排列 ↑";
+      if (ma20 < ma60) return "空頭排列 ↓";
+      return "均線糾結";
     }
-    function rule40Badge(it) {
-      return it.rule_of_40_met ? ' <span class="champagne">🍾 達標</span>' : "";
+    // 專屬指標格式化：無效值回傳 null，由呼叫端跳過，避免顯示 N/A
+    function fmtDomain(v, kind) {
+      if (v === null || v === undefined || v === "") return null;
+      switch (kind) {
+        case "price":
+        case "num":
+          return Number(v).toFixed(2);
+        case "pct":
+          return Number(v).toFixed(2) + "%";
+        case "yield":
+          return (Number(v) * 100).toFixed(2) + "%";
+        case "score":
+          return Number(v).toFixed(1) + " / 10";
+        case "score6":
+          return Number(v).toFixed(0) + " / 6";
+        case "bool":
+          return v ? "✅" : "❌";
+        case "signal":
+        case "text":
+        default:
+          return String(v);
+      }
     }
-    function fiveDimClass(s) {
-      if (s === null || s === undefined) return "gray";
-      if (s >= 8) return "green";
-      if (s >= 6) return "blue";
-      if (s >= 4) return "yellow";
-      return "red";
+    function coreMetrics(it) {
+      const list = [];
+      const add = (label, html) => { if (html !== null && html !== "") list.push({ label, html }); };
+      const p = fmt(it.price);
+      const chg = fmtSignedPct(it.change_pct);
+      add("現價", p === null ? null : p + (chg !== null ? ` <span class="${changeClass(it.change_pct)}">${chg}</span>` : ""));
+      add("RSI (14)", fmt(it.rsi14));
+      add("均線排列", maTrend(it.ma20, it.ma60));
+      add("週期定位", it.horizon || null);
+      add("建議買入", fmt(it.ideal_buy_price));
+      add("嚴格止損", fmt(it.stop_loss_price));
+      add("目標停利", fmt(it.take_profit_price));
+      add("建議倉位", fmtWeight(it.suggested_weight_pct));
+      return list.slice(0, 8);
     }
-    function fiveDimHtml(it) {
-      const s = it.five_dim_scores;
-      if (!s) return "";
-      const dims = [
-        ["成長", s.growth], ["獲利", s.profitability], ["低估", s.undervaluation],
-        ["安全", s.safety], ["暴漲", s.explosive]
-      ];
-      const bars = dims.map(([lbl, v]) => {
-        const n = (v === null || v === undefined) ? 0 : Number(v);
-        return `<span class="dim"><span class="lbl">${lbl}</span><span class="bar"><i style="width:${Math.max(0, Math.min(100, n * 10))}%"></i></span><b>${n.toFixed(1)}</b></span>`;
+
+    function domainSectionsHtml(it) {
+      const sections = it.domain_metrics || [];
+      if (!sections.length) return '<div class="empty">尚無專屬深潛指標</div>';
+      let html = "";
+      for (const sec of sections) {
+        const items = (sec.items || []).filter(x => x.value !== null && x.value !== undefined && x.value !== "");
+        if (!items.length) continue;
+        const itemsHtml = items.map(x => {
+          const val = fmtDomain(x.value, x.kind);
+          return `<div class="d-item"><span class="d-label">${x.label}</span><span class="d-value">${val}</span></div>`;
+        }).join("");
+        html += `<div class="d-section"><h4>${sec.title}</h4><div class="d-items">${itemsHtml}</div></div>`;
+      }
+      return html || '<div class="empty">尚無專屬深潛指標</div>';
+    }
+
+    function renderSymbol(it) {
+      const content = document.getElementById("content");
+      const cls = tagClass(it.signal);
+      const model = MODEL_LABEL[it.asset_model_type] || it.asset_model_type || "通用模型";
+      const core = coreMetrics(it).map(m =>
+        `<div class="metric"><div class="m-label">${m.label}</div><div class="m-value">${m.html}</div></div>`
+      ).join("");
+      content.innerHTML = `
+        <article class="symbol-card">
+          <div class="symbol-head">
+            <div>
+              <span class="symbol-name">${it.name}</span>
+              <span class="symbol-sym">${it.symbol}</span>
+            </div>
+            <div class="symbol-tags">
+              <span class="tag ${cls}">${it.signal || "⚪ 區間觀望"}</span>
+              <span class="model-badge">🔧 ${model}</span>
+              <span class="score-badge ${scoreClass(it.master_score)}">🎯 五師評分 ${fmtInt(it.master_score)}</span>
+            </div>
+          </div>
+          <div class="core-grid">${core}</div>
+          <div class="reason-note">📝 ${it.action_reason || "無操作說明"}</div>
+          <div class="deepdive">
+            <h3>🔍 專屬深潛指標</h3>
+            ${domainSectionsHtml(it)}
+          </div>
+        </article>`;
+    }
+
+    function selectSymbol(sym) {
+      state.sym = sym;
+      document.querySelectorAll("#subTabs .sub-tab").forEach(b =>
+        b.classList.toggle("active", b.dataset.sym === sym));
+      const items = state.data.assets[state.cat] || [];
+      const it = items.find(x => x.symbol === sym);
+      if (it) renderSymbol(it);
+    }
+
+    function selectCategory(cat) {
+      state.cat = cat;
+      state.sym = null;
+      const items = state.data.assets[cat] || [];
+      document.querySelectorAll("#mainTabs .main-tab").forEach(b =>
+        b.classList.toggle("active", b.dataset.cat === cat));
+      const sub = document.getElementById("subTabs");
+      sub.innerHTML = items.map(it =>
+        `<button class="sub-tab" data-sym="${it.symbol}"><span class="dot ${tagClass(it.signal)}"></span>${it.symbol}</button>`
+      ).join("");
+      sub.querySelectorAll(".sub-tab").forEach(btn =>
+        btn.addEventListener("click", () => selectSymbol(btn.dataset.sym)));
+      if (items.length) selectSymbol(items[0].symbol);
+    }
+
+    function renderMainTabs(data) {
+      const cats = CATEGORY_ORDER.filter(c => (data.assets?.[c] || []).length > 0);
+      for (const c of Object.keys(data.assets || {})) {
+        if (!cats.includes(c)) cats.push(c);
+      }
+      const nav = document.getElementById("mainTabs");
+      nav.innerHTML = cats.map(c => {
+        const items = data.assets[c] || [];
+        return `<button class="main-tab" data-cat="${c}">${CATEGORY_ICON[c] || "📦"} ${c}<span class="cnt">${items.length}</span></button>`;
       }).join("");
-      const avg = (s.average === null || s.average === undefined) ? "N/A" : Number(s.average).toFixed(1);
-      const grade = s.is_a_plus
-        ? ` <span class="grade-aplus">${s.grade || "主力級 A+"}</span>`
-        : (s.grade ? ` <span class="tag gray">${s.grade}</span>` : "");
-      return `<div class="five-dim">${bars}<span class="dim"><span class="lbl">平均</span><b>${avg}</b>${grade}</span></div>`;
+      nav.querySelectorAll(".main-tab").forEach(btn =>
+        btn.addEventListener("click", () => selectCategory(btn.dataset.cat)));
+      if (cats.length) selectCategory(cats[0]);
     }
-
-    const MASTER_SORT_KEYS = {
-      master_score: it => (it.master_score === null || it.master_score === undefined) ? -1 : Number(it.master_score),
-      five_dim: it => (it.five_dim_scores?.average === null || it.five_dim_scores?.average === undefined) ? -1 : Number(it.five_dim_scores.average),
-      upside_2: it => (it.upside_2 === null || it.upside_2 === undefined) ? -999 : Number(it.upside_2),
-      rule_of_40: it => (it.rule_of_40 === null || it.rule_of_40 === undefined) ? -1 : Number(it.rule_of_40),
-    };
-    let masterSort = { key: "master_score", asc: false };
-
-    function renderMasterTable(data, key, asc) {
-      key = key || masterSort.key;
-      asc = asc !== undefined ? asc : masterSort.asc;
-      masterSort = { key: key, asc: asc };
-      const all = [];
-      for (const cat of CATEGORY_ORDER) {
-        for (const it of (data.assets?.[cat] || [])) all.push(it);
-      }
-      const getter = MASTER_SORT_KEYS[key] || MASTER_SORT_KEYS.master_score;
-      all.sort((a, b) => {
-        const va = getter(a), vb = getter(b);
-        return asc ? va - vb : vb - va;
-      });
-      const arrow = k => (masterSort.key === k ? (masterSort.asc ? "▲" : "▼") : "");
-      const rows = all.map((it, i) => {
-        const chgCls = changeClass(it.change_pct);
-        const fds = it.five_dim_scores || {};
-        const fdsAvg = (fds.average === null || fds.average === undefined) ? "N/A" : Number(fds.average).toFixed(1);
-        const ups2 = (it.upside_2 === null || it.upside_2 === undefined) ? "N/A" : fmtRateSigned(it.upside_2);
-        const dwn = (it.downside_risk === null || it.downside_risk === undefined) ? "N/A" : fmtRateSigned(it.downside_risk);
-        const rule40 = (it.rule_of_40 === null || it.rule_of_40 === undefined)
-          ? "N/A"
-          : `<span class="${it.rule_of_40_met ? "champagne" : ""}">${Number(it.rule_of_40).toFixed(1)}%</span>`;
-        return `<tr>
-          <td>${i + 1}</td>
-          <td>${it.name}<span class="sym">${it.symbol}</span></td>
-          <td><span class="score-badge ${scoreClass(it.master_score)}">${fmtInt(it.master_score)}</span></td>
-          <td><span class="score-badge ${fiveDimClass(fds.average)}">${fdsAvg}</span>${fds.is_a_plus ? ' <span class="grade-aplus">主力級 A+</span>' : ""}</td>
-          <td>${fmt(it.target_price_2)} <span class="${changeClass(it.upside_2)}">${ups2}</span></td>
-          <td>${fmt(it.floor_price)} <span class="${changeClass(it.downside_risk)}">${dwn}</span></td>
-          <td>${rule40}</td>
-          <td>${fmt(it.target_per)}</td>
-          <td class="stage-cell">${it.position_stage || "N/A"}</td>
-          <td><span class="tag ${tagClass(it.signal)}">${it.signal || "⚪ 區間觀望"}</span></td>
-          <td>${fmt(it.price)}</td>
-          <td class="${chgCls}">${fmtPct(it.change_pct)}</td>
-        </tr>`;
-      }).join("");
-      document.getElementById("masterTable").innerHTML =
-        `<h2>🏆 雙引擎評分總表 · 五師評分 × Excel 估值 × 森口亮五維度</h2>
-        <table>
-          <thead><tr>
-            <th>排名</th><th>標的</th>
-            <th class="sortable" data-key="master_score">五師評分 ${arrow("master_score")}</th>
-            <th class="sortable" data-key="five_dim">五維度評分 ${arrow("five_dim")}</th>
-            <th class="sortable" data-key="upside_2">目標價② / 上漲率② ${arrow("upside_2")}</th>
-            <th>預測低點 / 下檔風險</th>
-            <th class="sortable" data-key="rule_of_40">40%法則 ${arrow("rule_of_40")}</th>
-            <th>複利目標 PER</th>
-            <th>1:2:6 倉位指引</th><th>訊號</th><th>價格</th><th>漲跌</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-      document.querySelectorAll("#masterTable th.sortable").forEach(th => {
-        th.onclick = () => renderMasterTable(data, th.dataset.key, th.dataset.key === masterSort.key ? !masterSort.asc : false);
-      });
-    }
-
-    function renderLedger(data) {
-      const el = document.getElementById("ledgerSection");
-      const ls = data.ledger_summary;
-      if (!ls || (!ls.total_signals && !ls.evaluated)) {
-        el.style.display = "none";
-        return;
-      }
-      el.style.display = "block";
-      const ov = ls.overall || {};
-      const pct = v => (v === null || v === undefined)
-        ? "N/A"
-        : (Number(v) >= 0 ? "+" : "") + Number(v).toFixed(2) + "%";
-      const wp = v => (v === null || v === undefined) ? "N/A" : Number(v).toFixed(1) + "%";
-      let html = `<h2>📒 歷史訊號與 30/90/180 天驗證帳本</h2>`;
-      html += `<div class="summary" style="margin-bottom:12px;">`;
-      html += `<div class="chip">📒 歷史訊號 ${ls.total_signals ?? 0} 筆</div>`;
-      html += `<div class="chip">✅ 已驗證 ${ls.evaluated ?? 0} 筆</div>`;
-      html += `<div class="chip">平均 MFE ${pct(ov.avg_mfe_pct)}</div>`;
-      html += `<div class="chip">平均 MAE ${pct(ov.avg_mae_pct)}</div>`;
-      html += `<div class="chip">平均累積報酬 ${pct(ov.avg_current_return_pct)}</div>`;
-      html += `<div class="chip">目前勝率 ${wp(ov.win_rate_pct)}</div>`;
-      html += `</div>`;
-
-      const by = ls.by_symbol || {};
-      const syms = Object.keys(by);
-      if (syms.length) {
-        html += `<table><thead><tr><th>標的</th><th>訊號數</th><th>平均 MFE%</th><th>平均 MAE%</th><th>平均累積報酬</th><th>勝率</th></tr></thead><tbody>`;
-        for (const s of syms) {
-          const b = by[s];
-          html += `<tr><td>${s}</td><td>${b.signals}</td><td>${pct(b.avg_mfe_pct)}</td><td>${pct(b.avg_mae_pct)}</td><td>${pct(b.avg_current_return_pct)}</td><td>${wp(b.win_rate_pct)}</td></tr>`;
-        }
-        html += `</tbody></table>`;
-      }
-
-      const rows = ls.rows || [];
-      if (rows.length) {
-        html += `<div style="margin-top:10px;font-size:0.8rem;color:var(--muted);">近期驗證明細（最多 200 筆）</div>`;
-        html += `<table><thead><tr><th>日期</th><th>標的</th><th>MFE%</th><th>MAE%</th><th>累積報酬</th><th>30日</th><th>90日</th><th>180日</th></tr></thead><tbody>`;
-        for (const r of rows) {
-          html += `<tr><td>${r.date}</td><td>${r.symbol}</td><td>${pct(r.mfe_pct)}</td><td>${pct(r.mae_pct)}</td><td>${pct(r.current_return_pct)}</td><td>${pct(r.return_30d_pct)}</td><td>${pct(r.return_90d_pct)}</td><td>${pct(r.return_180d_pct)}</td></tr>`;
-        }
-        html += `</tbody></table>`;
-      }
-      el.innerHTML = html;
-    }
-
     function renderMacro(macro) {
       const el = document.getElementById("macro");
       const grid = document.getElementById("macroGrid");
-      if (!macro) {
-        el.style.display = "none";
-        return;
-      }
+      if (!macro) { el.style.display = "none"; return; }
       el.style.display = "block";
       const num = (v, suffix = "") =>
         (v === null || v === undefined) ? "N/A" : Number(v).toFixed(2) + suffix;
@@ -479,161 +418,68 @@
       ).join("");
     }
 
-    function render(data) {
-      document.getElementById("subtitle").textContent =
-        "產生時間：" + (data.generated_at || "N/A");
+    function renderLedger(data) {
+      const wrap = document.getElementById("ledgerWrap");
+      const body = document.getElementById("ledgerBody");
+      const ls = data.ledger_summary;
+      if (!ls || (!ls.total_signals && !ls.evaluated)) { wrap.style.display = "none"; return; }
+      wrap.style.display = "block";
+      const ov = ls.overall || {};
+      const pct = v => (v === null || v === undefined)
+        ? "N/A" : (Number(v) >= 0 ? "+" : "") + Number(v).toFixed(2) + "%";
+      const wp = v => (v === null || v === undefined) ? "N/A" : Number(v).toFixed(1) + "%";
+      let html = `<div class="summary" style="margin-bottom:12px;">`;
+      html += `<div class="chip">📒 歷史訊號 ${ls.total_signals ?? 0} 筆</div>`;
+      html += `<div class="chip">✅ 已驗證 ${ls.evaluated ?? 0} 筆</div>`;
+      html += `<div class="chip">平均 MFE ${pct(ov.avg_mfe_pct)}</div>`;
+      html += `<div class="chip">平均 MAE ${pct(ov.avg_mae_pct)}</div>`;
+      html += `<div class="chip">平均累積報酬 ${pct(ov.avg_current_return_pct)}</div>`;
+      html += `<div class="chip">目前勝率 ${wp(ov.win_rate_pct)}</div>`;
+      html += `</div>`;
+      const by = ls.by_symbol || {};
+      const syms = Object.keys(by);
+      if (syms.length) {
+        html += `<table><thead><tr><th>標的</th><th>訊號數</th><th>平均 MFE%</th><th>平均 MAE%</th><th>平均累積報酬</th><th>勝率</th></tr></thead><tbody>`;
+        for (const s of syms) {
+          const b = by[s];
+          html += `<tr><td>${s}</td><td>${b.signals}</td><td>${pct(b.avg_mfe_pct)}</td><td>${pct(b.avg_mae_pct)}</td><td>${pct(b.avg_current_return_pct)}</td><td>${wp(b.win_rate_pct)}</td></tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+      const rows = ls.rows || [];
+      if (rows.length) {
+        html += `<div style="margin-top:10px;font-size:0.8rem;color:var(--muted);">近期驗證明細（最多 200 筆）</div>`;
+        html += `<table><thead><tr><th>日期</th><th>標的</th><th>MFE%</th><th>MAE%</th><th>累積報酬</th><th>30日</th><th>90日</th><th>180日</th></tr></thead><tbody>`;
+        for (const r of rows) {
+          html += `<tr><td>${r.date}</td><td>${r.symbol}</td><td>${pct(r.mfe_pct)}</td><td>${pct(r.mae_pct)}</td><td>${pct(r.current_return_pct)}</td><td>${pct(r.return_30d_pct)}</td><td>${pct(r.return_90d_pct)}</td><td>${pct(r.return_180d_pct)}</td></tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+      body.innerHTML = html;
+    }
 
+    function render(data) {
+      state.data = data;
+      document.getElementById("subtitle").textContent = "產生時間：" + (data.generated_at || "N/A");
       const summary = document.getElementById("summary");
       const sc = data.summary?.signal_counts || {};
       let chips = `<div class="chip">總標的：${data.summary?.total_assets ?? 0} 檔</div>`;
-      for (const [sig, cnt] of Object.entries(sc)) {
-        chips += `<div class="chip">${sig} × ${cnt}</div>`;
-      }
+      for (const [sig, cnt] of Object.entries(sc)) chips += `<div class="chip">${sig} × ${cnt}</div>`;
       summary.innerHTML = chips;
-
       renderMacro(data.macro_overview);
-      renderMasterTable(data);
       renderLedger(data);
-
-      const grid = document.getElementById("grid");
-      grid.innerHTML = "";
-      for (const cat of CATEGORY_ORDER) {
-        const items = data.assets?.[cat] || [];
-        const card = document.createElement("section");
-        card.className = "card";
-        let html = `<h2>${CATEGORY_ICON[cat] || ""} ${cat}</h2>`;
-        for (const it of items) {
-          const cls = tagClass(it.signal);
-          const chgCls = changeClass(it.change_pct);
-          const bt = it.backtest_strategy_1y || {};
-          html += `
-            <div class="asset">
-              <div class="row1">
-                <span class="name">${it.name}<span class="sym">${it.symbol}</span></span>
-                <span class="tag ${cls}">${it.signal || "⚪ 區間觀望"}</span>
-              </div>
-              <div class="metrics">
-                <span>價格 <b>${fmt(it.price)}</b> <span class="${chgCls}">${fmtPct(it.change_pct)}</span></span>
-                <span>RSI <b>${fmt(it.rsi14)}</b></span>
-                <span>${maTrend(it.ma20, it.ma60)}</span>
-                <span>殖利率 <b>${fmtYield(it.dividend_yield)}</b></span>
-              </div>
-              <div class="metrics">
-                <span>週期定位 <b>${it.horizon || "N/A"}</b></span>
-                <span>ATR14 <b>${fmt(it.atr14)}</b></span>
-                <span>MA200 <b>${fmt(it.ma200)}</b></span>
-                <span>HIGH20 <b>${fmt(it.high20)}</b></span>
-              </div>
-              <div class="metrics">
-                <span>建議買入 <b>${fmt(it.ideal_buy_price)}</b></span>
-                <span>嚴格止損 <b>${fmt(it.stop_loss_price)}</b></span>
-                <span>目標停利 <b>${fmt(it.take_profit_price)}</b></span>
-                <span>建議倉位 <b>${fmtWeight(it.suggested_weight_pct)}</b></span>
-              </div>
-              <div class="metrics">
-                <span>1年回測勝率 <b>${fmtRate(bt.win_rate)}</b></span>
-                <span>累積報酬 <b>${fmtRate(bt.strategy_return_1y)}</b></span>
-              </div>
-              <div class="metrics">
-                <span>最大回撤 MDD <b>${fmtRateSigned(bt.max_drawdown_pct)}</b></span>
-                <span>年化夏普 <b>${fmtRatio(bt.sharpe_ratio)}</b></span>
-                <span>獲利因子 <b>${fmtRatio(bt.profit_factor)}</b></span>
-                <span>近半年報酬 <b>${fmtRateSigned(bt.oos_return_6m)}</b></span>
-              </div>
-              <div class="metrics">
-                <span>量能狀態 <b>${it.volume_status || "N/A"}</b></span>
-                <span>1年交易 <b>${bt.trade_count_1y ?? "N/A"}</b> 次</span>
-                <span>最近出場 <b>${bt.last_exit_reason || "N/A"}</b></span>
-              </div>
-              <div class="metrics">
-                <span>出場法則 ${it.exit_rule_desc || "N/A"}</span>
-              </div>
-              <div class="valuation">
-                <div class="metrics">
-                  <span>🎯 目標價② <b>${fmt(it.target_price_2)}</b> <span class="${changeClass(it.upside_2)}">${fmtRateSigned(it.upside_2)}</span></span>
-                  <span>🛡 預測低點 <b>${fmt(it.floor_price)}</b> <span class="${changeClass(it.downside_risk)}">${fmtRateSigned(it.downside_risk)}</span></span>
-                  <span>📐 複利目標 PER <b>${fmt(it.target_per)}</b></span>
-                  <span>⚖️ 40%法則 <b>${fmtRuleOf40(it.rule_of_40)}</b>${rule40Badge(it)}</span>
-                </div>
-                ${fiveDimHtml(it)}
-              </div>
-              <div class="sniper">
-                <div class="sniper-title">🔭 實戰狙擊面板（遊牧民 × 茂爺爺 × 遠藤洋）</div>
-                <div class="metrics">
-                  <span>遊牧民 <b>${it.nomad_signal || "—"}</b></span>
-                  <span>${it.news_trap_warning || ""}</span>
-                </div>
-                <div class="metrics">
-                  <span>+1%停利 <b>${fmt(it.nomad_tp_1pct)}</b></span>
-                  <span>+3%停利 <b>${fmt(it.nomad_tp_3pct)}</b></span>
-                  <span>-5%停損 <b>${fmt(it.nomad_sl_5pct)}</b></span>
-                </div>
-                <div class="metrics">
-                  <span>茂爺爺 PBR <b>${fmt(it.pbr)}</b></span>
-                  <span>配息率 <b>${fmtYield(it.dividend_yield)}</b></span>
-                  <span>6大重點 <b>${fmtFujimoto(it.fujimoto_6_checks)}</b></span>
-                </div>
-                <div class="metrics">
-                  <span>遠藤洋 <b>${it.endo_entry_rule || "—"}</b></span>
-                </div>
-                <div class="metrics">
-                  <span>上升模式 <b>${fmtBool(it.endo_uptrend)}</b></span>
-                  <span>小型股檢核 <b>${fmtBool(it.endo_small_cap_ok)}</b></span>
-                  <span>市值 <b>${fmtMktCap(it.market_cap)}</b></span>
-                  <span>成交額 <b>${fmtTurnover(it.daily_turnover_val)}</b></span>
-                  <span>內部人持股 <b>${fmtRate(it.insider_ownership)}</b></span>
-                </div>
-              </div>
-              <div class="masters">
-                <div class="master-row">
-                  <span class="score-badge ${scoreClass(it.master_score)}">🎯 五師評分 ${fmtInt(it.master_score)}</span>
-                  <span class="stage">📦 ${it.position_stage || "N/A"}</span>
-                </div>
-                <div class="metrics">
-                  <span>遊牧民 MA3 <b>${fmt(it.ma3)}</b> ${maVsPrice(it.price, it.ma3)}</span>
-                  <span>MA8 <b>${fmt(it.ma8)}</b> ${maVsPrice(it.price, it.ma8)}</span>
-                  <span>MA15 <b>${fmt(it.ma15)}</b> ${maVsPrice(it.price, it.ma15)}</span>
-                  <span>MA120 <b>${fmt(it.ma120)}</b> ${maVsPrice(it.price, it.ma120)}</span>
-                </div>
-                <div class="metrics">
-                  <span>量能倍數 <b>${fmtVolRatio(it.vol_ratio)}</b></span>
-                  <span>前日量縮 <b>${fmtBool(it.vol_drop_prev)}</b></span>
-                  <span>近10日最大量 <b>${fmt(it.max_vol_10d)}</b></span>
-                </div>
-                <div class="metrics">
-                  <span>茂爺爺一目均衡 <b>${cloudLabel(it.ichimoku_cloud)}</b></span>
-                  <span>RSI <b>${fmt(it.rsi14)}</b></span>
-                  <span>MACD <b>${fmt(it.macd)}</b> 柱 <b>${fmt(it.macd_hist)}</b></span>
-                </div>
-                <div class="metrics">
-                  <span>cis / 遠藤洋移動停利 <b>${fmt(it.trailing_stop_price)}</b></span>
-                  <span>${it.endoh_time_cost_filter ? "🚫 " + it.endoh_time_cost_filter : "破線即停損不攤平"}</span>
-                </div>
-              </div>
-              <div class="reason">📝 ${it.action_reason || "N/A"}</div>
-            </div>`;
-        }
-        card.innerHTML = html;
-        grid.appendChild(card);
-      }
-    }
-
-    function loadJson(url) {
-      return fetch(url, { cache: "no-store" }).then(r => {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
-      });
+      renderMainTabs(data);
     }
 
     fetch("./data/latest_signals.json", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(render)
       .catch(err => {
-        document.getElementById("subtitle").textContent =
-          "⚠️ 無法載入資料：" + err.message;
+        document.getElementById("subtitle").textContent = "⚠️ 無法載入資料：" + err.message;
         document.getElementById("summary").innerHTML =
           '<div class="chip">請先執行 python quant_engine.py 產生資料，並以 HTTP 伺服器開啟本頁（例如在 public 目錄執行 python -m http.server）。</div>';
       });
   </script>
 </body>
 </html>
+
