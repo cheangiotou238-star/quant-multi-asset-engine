@@ -1,0 +1,42 @@
+{
+  "_instructions": "交易者自訂財報覆寫檔。將任一欄位填入數值即可覆寫 API 抓取值；欄位留 null 或刪除該鍵時，系統會自動以 yfinance 抓取並計算。defaults 為全體標的預設值，overrides 為個別標的覆寫值。",
+  "defaults": {
+    "base_per": 15.0,
+    "compound_years": 3
+  },
+  "overrides": {
+    "NVDA": {
+      "base_per": 28.0,
+      "compound_years": 3,
+      "per_high_avg": 60.0,
+      "per_low_avg": 32.0,
+      "eps_current": null,
+      "eps_next": null,
+      "rev_growth_3p": null,
+      "op_margin": null,
+      "earnings_date": "2026-08-26"
+    },
+    "AAPL": {
+      "base_per": 24.0,
+      "compound_years": 3,
+      "per_high_avg": 34.0,
+      "per_low_avg": 20.0,
+      "eps_current": null,
+      "eps_next": null,
+      "rev_growth_3p": null,
+      "op_margin": null,
+      "earnings_date": "2026-07-30"
+    },
+    "2330.TW": {
+      "base_per": 20.0,
+      "compound_years": 3,
+      "per_high_avg": 26.0,
+      "per_low_avg": 14.0,
+      "eps_current": null,
+      "eps_next": null,
+      "rev_growth_3p": null,
+      "op_margin": null,
+      "earnings_date": "2026-07-16"
+    }
+  }
+}

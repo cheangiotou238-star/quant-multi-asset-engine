@@ -175,6 +175,22 @@
   .master-table th.sortable { cursor: pointer; user-select: none; }
   .master-table th.sortable:hover { color: var(--gold); }
   .master-table .stage-cell { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+  .champagne {
+    display: inline-block; font-size: 0.78rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; border: 1px solid var(--gold);
+    background: linear-gradient(180deg, #FBF3D5, #E7D6A8); color: #8a6d1a; white-space: nowrap;
+  }
+  .grade-aplus {
+    display: inline-block; font-size: 0.76rem; font-weight: 700; color: #8a6d1a;
+    background: linear-gradient(180deg, #FBF3D5, #E7D6A8); border: 1px solid var(--gold);
+    border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+  }
+  .valuation { margin-top: 6px; padding: 6px 10px; border: 1px dashed var(--gold-soft); border-radius: 8px; }
+  .five-dim { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 0.76rem; }
+  .five-dim .dim { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .five-dim .dim .lbl { color: var(--muted); }
+  .five-dim .bar { width: 44px; height: 6px; background: #EEE5CF; border-radius: 3px; overflow: hidden; }
+  .five-dim .bar i { display: block; height: 100%; background: var(--gold); }
   footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: 0.8rem; }
 </style>
 </head>
@@ -268,23 +284,78 @@
       return price > ma ? "↑站上" : "↓跌破";
     }
     function cloudLabel(c) { return c || "N/A"; }
+    function fmtRuleOf40(v) {
+      if (v === null || v === undefined) return "N/A";
+      return Number(v).toFixed(1) + "%";
+    }
+    function rule40Badge(it) {
+      return it.rule_of_40_met ? ' <span class="champagne">🍾 達標</span>' : "";
+    }
+    function fiveDimClass(s) {
+      if (s === null || s === undefined) return "gray";
+      if (s >= 8) return "green";
+      if (s >= 6) return "blue";
+      if (s >= 4) return "yellow";
+      return "red";
+    }
+    function fiveDimHtml(it) {
+      const s = it.five_dim_scores;
+      if (!s) return "";
+      const dims = [
+        ["成長", s.growth], ["獲利", s.profitability], ["低估", s.undervaluation],
+        ["安全", s.safety], ["暴漲", s.explosive]
+      ];
+      const bars = dims.map(([lbl, v]) => {
+        const n = (v === null || v === undefined) ? 0 : Number(v);
+        return `<span class="dim"><span class="lbl">${lbl}</span><span class="bar"><i style="width:${Math.max(0, Math.min(100, n * 10))}%"></i></span><b>${n.toFixed(1)}</b></span>`;
+      }).join("");
+      const avg = (s.average === null || s.average === undefined) ? "N/A" : Number(s.average).toFixed(1);
+      const grade = s.is_a_plus
+        ? ` <span class="grade-aplus">${s.grade || "主力級 A+"}</span>`
+        : (s.grade ? ` <span class="tag gray">${s.grade}</span>` : "");
+      return `<div class="five-dim">${bars}<span class="dim"><span class="lbl">平均</span><b>${avg}</b>${grade}</span></div>`;
+    }
 
-    function renderMasterTable(data, sortAsc) {
+    const MASTER_SORT_KEYS = {
+      master_score: it => (it.master_score === null || it.master_score === undefined) ? -1 : Number(it.master_score),
+      five_dim: it => (it.five_dim_scores?.average === null || it.five_dim_scores?.average === undefined) ? -1 : Number(it.five_dim_scores.average),
+      upside_2: it => (it.upside_2 === null || it.upside_2 === undefined) ? -999 : Number(it.upside_2),
+      rule_of_40: it => (it.rule_of_40 === null || it.rule_of_40 === undefined) ? -1 : Number(it.rule_of_40),
+    };
+    let masterSort = { key: "master_score", asc: false };
+
+    function renderMasterTable(data, key, asc) {
+      key = key || masterSort.key;
+      asc = asc !== undefined ? asc : masterSort.asc;
+      masterSort = { key: key, asc: asc };
       const all = [];
       for (const cat of CATEGORY_ORDER) {
         for (const it of (data.assets?.[cat] || [])) all.push(it);
       }
+      const getter = MASTER_SORT_KEYS[key] || MASTER_SORT_KEYS.master_score;
       all.sort((a, b) => {
-        const sa = (a.master_score === null || a.master_score === undefined) ? -1 : Number(a.master_score);
-        const sb = (b.master_score === null || b.master_score === undefined) ? -1 : Number(b.master_score);
-        return sortAsc ? sa - sb : sb - sa;
+        const va = getter(a), vb = getter(b);
+        return asc ? va - vb : vb - va;
       });
+      const arrow = k => (masterSort.key === k ? (masterSort.asc ? "▲" : "▼") : "");
       const rows = all.map((it, i) => {
         const chgCls = changeClass(it.change_pct);
+        const fds = it.five_dim_scores || {};
+        const fdsAvg = (fds.average === null || fds.average === undefined) ? "N/A" : Number(fds.average).toFixed(1);
+        const ups2 = (it.upside_2 === null || it.upside_2 === undefined) ? "N/A" : fmtRateSigned(it.upside_2);
+        const dwn = (it.downside_risk === null || it.downside_risk === undefined) ? "N/A" : fmtRateSigned(it.downside_risk);
+        const rule40 = (it.rule_of_40 === null || it.rule_of_40 === undefined)
+          ? "N/A"
+          : `<span class="${it.rule_of_40_met ? "champagne" : ""}">${Number(it.rule_of_40).toFixed(1)}%</span>`;
         return `<tr>
           <td>${i + 1}</td>
           <td>${it.name}<span class="sym">${it.symbol}</span></td>
           <td><span class="score-badge ${scoreClass(it.master_score)}">${fmtInt(it.master_score)}</span></td>
+          <td><span class="score-badge ${fiveDimClass(fds.average)}">${fdsAvg}</span>${fds.is_a_plus ? ' <span class="grade-aplus">主力級 A+</span>' : ""}</td>
+          <td>${fmt(it.target_price_2)} <span class="${changeClass(it.upside_2)}">${ups2}</span></td>
+          <td>${fmt(it.floor_price)} <span class="${changeClass(it.downside_risk)}">${dwn}</span></td>
+          <td>${rule40}</td>
+          <td>${fmt(it.target_per)}</td>
           <td class="stage-cell">${it.position_stage || "N/A"}</td>
           <td><span class="tag ${tagClass(it.signal)}">${it.signal || "⚪ 區間觀望"}</span></td>
           <td>${fmt(it.price)}</td>
@@ -292,17 +363,23 @@
         </tr>`;
       }).join("");
       document.getElementById("masterTable").innerHTML =
-        `<h2>🏆 五師綜合評分總表 · 森口亮 5 分鐘戰情室</h2>
+        `<h2>🏆 雙引擎評分總表 · 五師評分 × Excel 估值 × 森口亮五維度</h2>
         <table>
           <thead><tr>
             <th>排名</th><th>標的</th>
-            <th class="sortable" id="masterScoreSort">五師評分 ${sortAsc ? "▲" : "▼"}</th>
+            <th class="sortable" data-key="master_score">五師評分 ${arrow("master_score")}</th>
+            <th class="sortable" data-key="five_dim">五維度評分 ${arrow("five_dim")}</th>
+            <th class="sortable" data-key="upside_2">目標價② / 上漲率② ${arrow("upside_2")}</th>
+            <th>預測低點 / 下檔風險</th>
+            <th class="sortable" data-key="rule_of_40">40%法則 ${arrow("rule_of_40")}</th>
+            <th>複利目標 PER</th>
             <th>1:2:6 倉位指引</th><th>訊號</th><th>價格</th><th>漲跌</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
-      document.getElementById("masterScoreSort").onclick =
-        () => renderMasterTable(data, !sortAsc);
+      document.querySelectorAll("#masterTable th.sortable").forEach(th => {
+        th.onclick = () => renderMasterTable(data, th.dataset.key, th.dataset.key === masterSort.key ? !masterSort.asc : false);
+      });
     }
 
     function renderMacro(macro) {
@@ -343,7 +420,7 @@
       summary.innerHTML = chips;
 
       renderMacro(data.macro_overview);
-      renderMasterTable(data, false);
+      renderMasterTable(data);
 
       const grid = document.getElementById("grid");
       grid.innerHTML = "";
@@ -397,6 +474,15 @@
               </div>
               <div class="metrics">
                 <span>出場法則 ${it.exit_rule_desc || "N/A"}</span>
+              </div>
+              <div class="valuation">
+                <div class="metrics">
+                  <span>🎯 目標價② <b>${fmt(it.target_price_2)}</b> <span class="${changeClass(it.upside_2)}">${fmtRateSigned(it.upside_2)}</span></span>
+                  <span>🛡 預測低點 <b>${fmt(it.floor_price)}</b> <span class="${changeClass(it.downside_risk)}">${fmtRateSigned(it.downside_risk)}</span></span>
+                  <span>📐 複利目標 PER <b>${fmt(it.target_per)}</b></span>
+                  <span>⚖️ 40%法則 <b>${fmtRuleOf40(it.rule_of_40)}</b>${rule40Badge(it)}</span>
+                </div>
+                ${fiveDimHtml(it)}
               </div>
               <div class="masters">
                 <div class="master-row">

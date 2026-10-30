@@ -95,6 +95,21 @@ DIRTY_DATA_MAX_DAILY_CHANGE = 0.45
 # 【硬傷4】yfinance 連線超時保護（秒）：所有抓取帶 timeout，避免卡死
 YFINANCE_TIMEOUT_SECONDS = 15
 
+# ===== 交易者自訂財報覆寫與 Excel 數學估值公式 =====
+CUSTOM_ESTIMATES_PATH = os.path.join(".", "data", "custom_estimates.json")
+DEFAULT_BASE_PER = 15.0          # 行業標準本益比
+DEFAULT_COMPOUND_YEARS = 3       # 目標本益比複利年數 t
+TARGET_PER_MIN = 8.0             # 複利目標本益比合理下限
+TARGET_PER_MAX = 120.0           # 複利目標本益比合理上限
+EXCEL_GRADE_A_PLUS = 8.0         # 五維度平均 >= 8.0 標記「主力級 A+」
+RULE_OF_40_THRESHOLD = 40.0      # Rule of 40 達標門檻（%）
+
+# 離線模式：python quant_engine.py --offline，僅讀本地 CSV 快取，不進行任何網路請求
+OFFLINE_MODE = "--offline" in sys.argv
+
+# 基本面估值適用之資產類別（其餘採「歷史波動率分位數 + 200日均線乖離率」映射）
+FUNDAMENTAL_CATEGORIES = ("Stocks", "REITs")
+
 
 # ===== 五位日韓操盤名家融合參數 =====
 # 遊牧民（Nomad）：非典型均線週期與量能雷達
@@ -207,6 +222,9 @@ def fetch_macro_overview():
         "crypto_fear_greed_label": "幣圈恐慌貪婪指數",
         "crypto_fear_greed_classification": None,
     }
+
+    if OFFLINE_MODE:
+        return overview
 
     for ticker, key in MACRO_TICKERS.items():
         try:
@@ -1348,10 +1366,40 @@ def fetch_yfinance_history(symbol, retries=YFINANCE_RETRY_MAX):
 
 def fetch_fundamentals(symbol):
     """抓取基本面資訊（殖利率 / 本益比 / 股價淨值比），失敗回傳空 dict。"""
+    if OFFLINE_MODE:
+        return {}
     try:
         return yf.Ticker(symbol, session=_make_yfinance_session()).info or {}
     except Exception as exc:
         print(f"    [warn] {symbol} 基本面取得失敗: {exc}")
+        return {}
+
+
+def fetch_fast_quote(symbol):
+    """抓取 fast_info 即時報價，用於與還原收盤價做交叉驗證。"""
+    if OFFLINE_MODE:
+        return {}
+    try:
+        fast = yf.Ticker(symbol, session=_make_yfinance_session()).fast_info
+        last_price = None
+        for key in ("last_price", "lastPrice"):
+            try:
+                last_price = to_float(getattr(fast, key, None))
+            except Exception:
+                last_price = None
+            if last_price is not None:
+                break
+        previous_close = None
+        for key in ("previous_close", "previousClose", "regular_market_previous_close"):
+            try:
+                previous_close = to_float(getattr(fast, key, None))
+            except Exception:
+                previous_close = None
+            if previous_close is not None:
+                break
+        return {"last_price": last_price, "previous_close": previous_close}
+    except Exception as exc:
+        print(f"    [warn] {symbol} fast_info 取得失敗: {exc}")
         return {}
 
 
@@ -1384,6 +1432,12 @@ def load_market_data(category, symbol):
     - Crypto：幣安官方 API 優先，失敗 fallback 至 yfinance，再 fallback 本地快取。
     - 其餘：yfinance 優先，失敗 fallback 本地快取。
     """
+    if OFFLINE_MODE:
+        df = load_local_history_csv(symbol)
+        if df is not None and not df.empty:
+            return df, df.copy(), SOURCE_CACHE
+        return None, None, None
+
     if category == "Crypto":
         try:
             df = fetch_binance_klines(symbol)
@@ -1410,6 +1464,356 @@ def load_market_data(category, symbol):
     if df is not None and not df.empty:
         return df, df.copy(), SOURCE_CACHE
     return None, None, None
+
+
+# ===== Excel 數學估值公式（森口亮基本面估值 + 五維度評分） =====
+
+_CUSTOM_ESTIMATES_CACHE = None
+
+
+def load_custom_estimates():
+    """讀取 data/custom_estimates.json（交易者自訂財報覆寫），回傳 (defaults, overrides)。"""
+    if not os.path.exists(CUSTOM_ESTIMATES_PATH):
+        return {}, {}
+    try:
+        with open(CUSTOM_ESTIMATES_PATH, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception as exc:
+        print(f"    [warn] 讀取 custom_estimates.json 失敗: {exc}")
+        return {}, {}
+    return payload.get("defaults") or {}, payload.get("overrides") or {}
+
+
+def _custom_estimates():
+    global _CUSTOM_ESTIMATES_CACHE
+    if _CUSTOM_ESTIMATES_CACHE is None:
+        _CUSTOM_ESTIMATES_CACHE = load_custom_estimates()
+    return _CUSTOM_ESTIMATES_CACHE
+
+
+def _round_or_none(value, ndigits=4):
+    f = to_float(value)
+    return round(f, ndigits) if f is not None else None
+
+
+def _clamp_value(value, lo, hi):
+    if value is None:
+        return None
+    return max(lo, min(hi, value))
+
+
+def _clamp_score(value):
+    return round(max(1.0, min(10.0, value)), 2)
+
+
+def _parse_earnings_date(value):
+    """將 yfinance earningsDate / 自訂日期字串 / 時間戳轉為 date 物件。"""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                parsed = _parse_earnings_date(item)
+                if parsed is not None:
+                    return parsed
+            return None
+        if isinstance(value, datetime.datetime):
+            return value.date()
+        if isinstance(value, datetime.date):
+            return value
+        if isinstance(value, (int, float)):
+            return datetime.datetime.fromtimestamp(value).date()
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return None
+            for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    return datetime.datetime.strptime(s, fmt).date()
+                except ValueError:
+                    continue
+            return datetime.date.fromisoformat(s[:10])
+    except Exception:
+        return None
+    return None
+
+
+def _historical_vol_percentile(ind):
+    """當前 60 日年化波動率，及其在近 2 年波動率區間中的分位數（0~1）。"""
+    try:
+        close = ind["close"].astype(float)
+        returns = close.pct_change().dropna()
+        if len(returns) < 60:
+            return None, None
+        rolling_vol = returns.rolling(60, min_periods=60).std() * math.sqrt(252)
+        rolling_vol = rolling_vol.dropna()
+        if rolling_vol.empty:
+            return None, None
+        current = float(rolling_vol.iloc[-1])
+        percentile = float((rolling_vol <= current).mean())
+        return max(0.0, min(1.0, percentile)), current
+    except Exception:
+        return None, None
+
+
+def apply_fast_quote_verification(symbol, record, raw_last_close):
+    """以 fast_info 即時報價交叉驗證收盤價；乖離 > 2% 時改用即時報價。"""
+    quote = fetch_fast_quote(symbol)
+    fast_price = quote.get("last_price")
+    record["fast_quote_price"] = fast_price
+    if fast_price is not None and raw_last_close is not None and raw_last_close > 0:
+        diff = abs(fast_price - raw_last_close) / raw_last_close
+        record["quote_cross_verified"] = diff <= 0.02
+        if diff > 0.02:
+            record["price"] = round(fast_price, 4)
+    else:
+        record["quote_cross_verified"] = False
+
+
+def _five_dim_scores_fundamental(profit_growth_rate, op_margin, upside_1, upside_2,
+                                 downside_risk):
+    """森口亮五維度評分（基本面）：①成長性 ②獲利性 ③低估性 ④安全性 ⑤暴漲性。"""
+
+    def _growth():
+        g = profit_growth_rate
+        if g is None:
+            return 5.0
+        if g >= 0.30: return 10.0
+        if g >= 0.20: return 9.0
+        if g >= 0.15: return 8.0
+        if g >= 0.10: return 7.0
+        if g >= 0.05: return 6.0
+        if g >= 0.00: return 5.0
+        if g >= -0.05: return 4.0
+        if g >= -0.10: return 3.0
+        if g >= -0.20: return 2.0
+        return 1.0
+
+    def _profitability():
+        m = op_margin
+        if m is None:
+            return 5.0
+        if m >= 0.40: return 10.0
+        if m >= 0.30: return 9.0
+        if m >= 0.25: return 8.0
+        if m >= 0.20: return 7.0
+        if m >= 0.15: return 6.0
+        if m >= 0.10: return 5.0
+        if m >= 0.05: return 4.0
+        if m >= 0.00: return 3.0
+        return 2.0
+
+    def _undervaluation():
+        u = upside_2
+        if u is None:
+            return 5.0
+        if u >= 1.0: return 10.0
+        if u >= 0.6: return 9.0
+        if u >= 0.4: return 8.0
+        if u >= 0.25: return 7.0
+        if u >= 0.15: return 6.0
+        if u >= 0.05: return 5.0
+        if u >= 0.00: return 4.0
+        if u >= -0.10: return 3.0
+        if u >= -0.20: return 2.0
+        return 1.0
+
+    def _safety():
+        d = downside_risk
+        if d is None:
+            return 5.0
+        if d >= 0.0: return 10.0
+        if d >= -0.05: return 9.0
+        if d >= -0.10: return 8.0
+        if d >= -0.15: return 7.0
+        if d >= -0.20: return 6.0
+        if d >= -0.25: return 5.0
+        if d >= -0.30: return 4.0
+        if d >= -0.40: return 3.0
+        return 2.0
+
+    def _explosive():
+        u = upside_1
+        if u is None:
+            return 5.0
+        if u >= 1.0: return 10.0
+        if u >= 0.6: return 9.0
+        if u >= 0.4: return 8.0
+        if u >= 0.25: return 7.0
+        if u >= 0.15: return 6.0
+        if u >= 0.05: return 5.0
+        if u >= 0.00: return 4.0
+        if u >= -0.10: return 3.0
+        if u >= -0.20: return 2.0
+        return 1.0
+
+    return {
+        "growth": _growth(),
+        "profitability": _profitability(),
+        "undervaluation": _undervaluation(),
+        "safety": _safety(),
+        "explosive": _explosive(),
+    }
+
+
+def _five_dim_scores_technical(ma200_bias, rsi, vol_pctl, close_adj, high20):
+    """森口亮五維度評分（無財報標的）：以波動率分位數 + 200日均線乖離率映射。"""
+    bias = ma200_bias if ma200_bias is not None else 0.0
+    r = rsi if rsi is not None else 50.0
+    pctl = vol_pctl if vol_pctl is not None else 0.5
+
+    growth = 5.0 + bias * 10.0 + (r - 50.0) / 10.0
+    profitability = 5.0 + bias * 5.0 + (0.5 - pctl) * 4.0
+    undervaluation = 5.0 - bias * 10.0
+    safety = 10.0 - pctl * 9.0
+    explosive = 5.0 + pctl * 5.0
+    if close_adj is not None and high20 is not None and high20 > 0:
+        if close_adj >= high20:
+            explosive += 1.0
+        elif close_adj >= high20 * 0.98:
+            explosive += 0.5
+
+    return {
+        "growth": _clamp_score(growth),
+        "profitability": _clamp_score(profitability),
+        "undervaluation": _clamp_score(undervaluation),
+        "safety": _clamp_score(safety),
+        "explosive": _clamp_score(explosive),
+    }
+
+
+def _grade_for(average):
+    if average >= 8.0:
+        return "主力級 A+"
+    if average >= 7.0:
+        return "A級"
+    if average >= 6.0:
+        return "B+級"
+    if average >= 5.0:
+        return "B級"
+    if average >= 4.0:
+        return "C級"
+    return "D級"
+
+
+def _compute_excel_valuation(symbol, category, price, info, ind, latest):
+    """Excel 數學估值：目標價①② / 地板價 / 40%法則 / 森口亮五維度評分（1~10）。"""
+    info = info or {}
+    price = to_float(price)
+    defaults, overrides = _custom_estimates()
+    est = dict(defaults)
+    est.update(overrides.get(symbol, {}))
+
+    base_per = to_float(est.get("base_per")) or DEFAULT_BASE_PER
+    compound_years = int(to_float(est.get("compound_years")) or DEFAULT_COMPOUND_YEARS)
+
+    eps_current = to_float(est.get("eps_current"))
+    if eps_current is None:
+        eps_current = to_float(info.get("trailingEps"))
+    eps_next = to_float(est.get("eps_next"))
+    if eps_next is None:
+        eps_next = to_float(info.get("forwardEps"))
+    if eps_current is not None and eps_next is not None:
+        eps_mid = (eps_current + eps_next) / 2.0
+    else:
+        eps_mid = eps_current if eps_current is not None else eps_next
+
+    rev_growth_rate = to_float(est.get("rev_growth_3p"))
+    if rev_growth_rate is None:
+        rev_growth_rate = to_float(info.get("revenueGrowth"))
+    op_margin = to_float(est.get("op_margin"))
+    if op_margin is None:
+        op_margin = to_float(info.get("operatingMargins"))
+    profit_growth_rate = to_float(info.get("earningsGrowth"))
+    if profit_growth_rate is None:
+        profit_growth_rate = rev_growth_rate
+
+    earnings_date = _parse_earnings_date(est.get("earnings_date") or info.get("earningsDate"))
+    check_90d = earnings_date + datetime.timedelta(days=90) if earnings_date else None
+    check_180d = earnings_date + datetime.timedelta(days=180) if earnings_date else None
+    rule_of_40 = None
+    if op_margin is not None or rev_growth_rate is not None:
+        rule_of_40 = ((op_margin or 0.0) + (rev_growth_rate or 0.0)) * 100.0
+
+    close_adj = to_float(latest.get("close"))
+    ma200 = to_float(latest.get("ma200"))
+    rsi = to_float(latest.get("rsi14"))
+    high20 = to_float(latest.get("high20"))
+    vol_pctl, _ann_vol = _historical_vol_percentile(ind)
+    ma200_bias = None
+    if close_adj is not None and ma200 is not None and ma200 > 0:
+        ma200_bias = (close_adj - ma200) / ma200
+
+    if eps_mid is not None and price is not None and price > 0 and category in FUNDAMENTAL_CATEGORIES:
+        model = "基本面數學估值（Excel 公式）"
+        trailing_pe = to_float(info.get("trailingPE"))
+        per_high_avg = to_float(est.get("per_high_avg"))
+        if per_high_avg is None:
+            per_high_avg = (trailing_pe or base_per) * 1.2
+        per_low_avg = to_float(est.get("per_low_avg"))
+        if per_low_avg is None:
+            per_low_avg = (trailing_pe or base_per) * 0.8
+        growth = profit_growth_rate if profit_growth_rate is not None else 0.0
+        target_per = _clamp_value(base_per * ((1.0 + growth) ** compound_years), TARGET_PER_MIN, TARGET_PER_MAX)
+        target_price_1 = eps_mid * per_high_avg
+        target_price_2 = eps_mid * target_per
+        floor_price = eps_mid * per_low_avg
+        upside_1 = (target_price_1 - price) / price
+        upside_2 = (target_price_2 - price) / price
+        downside_risk = (floor_price - price) / price
+        scores = _five_dim_scores_fundamental(profit_growth_rate, op_margin, upside_1, upside_2, downside_risk)
+    else:
+        model = "歷史波動率分位數 + 200日均線乖離率映射"
+        per_high_avg = per_low_avg = target_per = None
+        target_price_1 = target_price_2 = floor_price = None
+        upside_1 = upside_2 = downside_risk = None
+        if price is not None and price > 0:
+            bias = ma200_bias if ma200_bias is not None else 0.0
+            pctl = vol_pctl if vol_pctl is not None else 0.5
+            vol_factor = 0.5 + pctl
+            upside_2 = max(0.05, (0.20 - 0.5 * bias) * vol_factor)
+            downside_risk = -max(0.05, (0.20 + 0.5 * bias) * vol_factor)
+            target_price_2 = price * (1.0 + upside_2)
+            target_price_1 = price * (1.0 + upside_2 * 1.35)
+            floor_price = price * (1.0 + downside_risk)
+            upside_1 = (target_price_1 - price) / price
+        scores = _five_dim_scores_technical(ma200_bias, rsi, vol_pctl, close_adj, high20)
+
+    average = max(1.0, min(10.0, round(sum(scores.values()) / 5.0, 2)))
+
+    return {
+        "valuation_model": model,
+        "eps_mid": _round_or_none(eps_mid, 4),
+        "eps_current": _round_or_none(eps_current, 4),
+        "eps_next": _round_or_none(eps_next, 4),
+        "base_per": _round_or_none(base_per, 2),
+        "compound_years": compound_years,
+        "profit_growth_rate": _round_or_none(profit_growth_rate, 4),
+        "target_per": _round_or_none(target_per, 2),
+        "per_high_avg": _round_or_none(per_high_avg, 2),
+        "per_low_avg": _round_or_none(per_low_avg, 2),
+        "target_price_1": _round_or_none(target_price_1, 4),
+        "upside_1": _round_or_none(upside_1, 4),
+        "target_price_2": _round_or_none(target_price_2, 4),
+        "upside_2": _round_or_none(upside_2, 4),
+        "floor_price": _round_or_none(floor_price, 4),
+        "downside_risk": _round_or_none(downside_risk, 4),
+        "rule_of_40": _round_or_none(rule_of_40, 2),
+        "rule_of_40_met": bool(rule_of_40 is not None and rule_of_40 >= RULE_OF_40_THRESHOLD),
+        "earnings_date": earnings_date.isoformat() if earnings_date else None,
+        "check_90d": check_90d.isoformat() if check_90d else None,
+        "check_180d": check_180d.isoformat() if check_180d else None,
+        "five_dim_scores": {
+            "growth": _round_or_none(scores["growth"], 2),
+            "profitability": _round_or_none(scores["profitability"], 2),
+            "undervaluation": _round_or_none(scores["undervaluation"], 2),
+            "safety": _round_or_none(scores["safety"], 2),
+            "explosive": _round_or_none(scores["explosive"], 2),
+            "average": average,
+            "grade": _grade_for(average),
+            "is_a_plus": bool(average >= EXCEL_GRADE_A_PLUS),
+        },
+    }
 
 
 def fetch_and_analyze(category, symbol, name):
@@ -1496,6 +1900,7 @@ def fetch_and_analyze(category, symbol, name):
             save_history(symbol, df_raw)
 
         # 基本面資訊（僅 Yahoo 來源具備完整基本面；幣安/本地快取設為 None）
+        info = {}
         if data_source == SOURCE_YAHOO:
             info = fetch_fundamentals(symbol)
             record["dividend_yield"] = normalize_yield(info.get("dividendYield"))
@@ -1537,6 +1942,11 @@ def fetch_and_analyze(category, symbol, name):
         prev_boll_lower = to_float(ind["boll_lower"].iloc[-2]) if len(ind) > 1 else None
 
         record["price"] = round(raw_last_close, 4) if raw_last_close is not None else None
+        # fast_info 報價交叉驗證（僅 Yahoo 來源）：與還原收盤價乖離 > 2% 時改用即時報價
+        record["fast_quote_price"] = None
+        record["quote_cross_verified"] = False
+        if data_source == SOURCE_YAHOO:
+            apply_fast_quote_verification(symbol, record, raw_last_close)
         record["change_pct"] = (
             round((raw_last_close / raw_prev_close - 1.0) * 100.0, 2)
             if raw_last_close is not None and raw_prev_close
@@ -1550,6 +1960,9 @@ def fetch_and_analyze(category, symbol, name):
         record["high20"] = round(last_high20, 4) if last_high20 is not None else None
         record["boll_upper"] = round(last_boll_upper, 4) if last_boll_upper is not None else None
         record["boll_lower"] = round(last_boll_lower, 4) if last_boll_lower is not None else None
+
+        # ===== Excel 數學估值：目標價①② / 地板價 / 40%法則 / 森口亮五維度評分 =====
+        record.update(_compute_excel_valuation(symbol, category, record["price"], info, ind, latest))
 
         # 第 5 章：月均量流動性濾網 + 爆量長紅偵測
         volume_status, big_vol_red_candle = volume_analysis(latest, rules)
