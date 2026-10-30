@@ -140,6 +140,41 @@
   .up   { color: var(--green); }
   .down { color: var(--red); }
   .flat { color: var(--muted); }
+  .score-badge {
+    display: inline-block; font-size: 0.82rem; font-weight: 700;
+    padding: 2px 10px; border-radius: 999px; border: 1px solid; white-space: nowrap;
+  }
+  .score-badge.green  { color: var(--green);  border-color: var(--green);  background: #EAF4EA; }
+  .score-badge.blue   { color: var(--blue);   border-color: var(--blue);   background: #E8F0FA; }
+  .score-badge.yellow { color: var(--yellow); border-color: var(--yellow); background: #FAF3DE; }
+  .score-badge.red    { color: var(--red);    border-color: var(--red);    background: #FAE9E9; }
+  .score-badge.gray   { color: var(--gray);   border-color: var(--gray);   background: #F0F0F0; }
+  .asset .masters {
+    margin-top: 8px; padding: 8px 10px;
+    border: 1px dashed var(--gold-soft); border-radius: 8px;
+    background: linear-gradient(180deg, #FFFDF8, #F8F2E2);
+  }
+  .asset .master-row {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
+  }
+  .asset .stage { font-size: 0.8rem; color: var(--dark); }
+  .master-table {
+    background: var(--ivory-card); border: 1px solid var(--gold);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 26px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06); overflow-x: auto;
+  }
+  .master-table h2 {
+    font-family: Georgia, "Times New Roman", serif; font-size: 1.05rem;
+    letter-spacing: 1px; margin-bottom: 12px; text-align: center;
+  }
+  .master-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .master-table th, .master-table td {
+    padding: 7px 9px; border-bottom: 1px dashed var(--gold-soft); text-align: left;
+  }
+  .master-table th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .master-table th.sortable { cursor: pointer; user-select: none; }
+  .master-table th.sortable:hover { color: var(--gold); }
+  .master-table .stage-cell { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
   footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: 0.8rem; }
 </style>
 </head>
@@ -153,6 +188,7 @@
     <div class="macro-grid" id="macroGrid"></div>
   </section>
   <div class="summary" id="summary"></div>
+  <section class="master-table" id="masterTable"></section>
   <div class="grid" id="grid"></div>
   <footer>Quant Multi-Asset Engine · 資料來源 Yahoo Finance</footer>
 
@@ -212,6 +248,62 @@
       if (v === null || v === undefined) return "flat";
       return v >= 0 ? "up" : "down";
     }
+    function fmtInt(v) {
+      if (v === null || v === undefined) return "N/A";
+      return Number(v).toFixed(0);
+    }
+    function fmtVolRatio(v) {
+      if (v === null || v === undefined) return "N/A";
+      return Number(v).toFixed(2) + "x";
+    }
+    function scoreClass(s) {
+      if (s === null || s === undefined) return "gray";
+      if (s >= 80) return "green";
+      if (s >= 60) return "blue";
+      if (s >= 40) return "yellow";
+      return "red";
+    }
+    function maVsPrice(price, ma) {
+      if (price === null || price === undefined || ma === null || ma === undefined) return "";
+      return price > ma ? "↑站上" : "↓跌破";
+    }
+    function cloudLabel(c) { return c || "N/A"; }
+
+    function renderMasterTable(data, sortAsc) {
+      const all = [];
+      for (const cat of CATEGORY_ORDER) {
+        for (const it of (data.assets?.[cat] || [])) all.push(it);
+      }
+      all.sort((a, b) => {
+        const sa = (a.master_score === null || a.master_score === undefined) ? -1 : Number(a.master_score);
+        const sb = (b.master_score === null || b.master_score === undefined) ? -1 : Number(b.master_score);
+        return sortAsc ? sa - sb : sb - sa;
+      });
+      const rows = all.map((it, i) => {
+        const chgCls = changeClass(it.change_pct);
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${it.name}<span class="sym">${it.symbol}</span></td>
+          <td><span class="score-badge ${scoreClass(it.master_score)}">${fmtInt(it.master_score)}</span></td>
+          <td class="stage-cell">${it.position_stage || "N/A"}</td>
+          <td><span class="tag ${tagClass(it.signal)}">${it.signal || "⚪ 區間觀望"}</span></td>
+          <td>${fmt(it.price)}</td>
+          <td class="${chgCls}">${fmtPct(it.change_pct)}</td>
+        </tr>`;
+      }).join("");
+      document.getElementById("masterTable").innerHTML =
+        `<h2>🏆 五師綜合評分總表 · 森口亮 5 分鐘戰情室</h2>
+        <table>
+          <thead><tr>
+            <th>排名</th><th>標的</th>
+            <th class="sortable" id="masterScoreSort">五師評分 ${sortAsc ? "▲" : "▼"}</th>
+            <th>1:2:6 倉位指引</th><th>訊號</th><th>價格</th><th>漲跌</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      document.getElementById("masterScoreSort").onclick =
+        () => renderMasterTable(data, !sortAsc);
+    }
 
     function renderMacro(macro) {
       const el = document.getElementById("macro");
@@ -251,6 +343,7 @@
       summary.innerHTML = chips;
 
       renderMacro(data.macro_overview);
+      renderMasterTable(data, false);
 
       const grid = document.getElementById("grid");
       grid.innerHTML = "";
@@ -304,6 +397,27 @@
               </div>
               <div class="metrics">
                 <span>出場法則 ${it.exit_rule_desc || "N/A"}</span>
+              </div>
+              <div class="masters">
+                <div class="master-row">
+                  <span class="score-badge ${scoreClass(it.master_score)}">🎯 五師評分 ${fmtInt(it.master_score)}</span>
+                  <span class="stage">📦 ${it.position_stage || "N/A"}</span>
+                </div>
+                <div class="metrics">
+                  <span>遊牧民 MA3 <b>${fmt(it.ma3)}</b> ${maVsPrice(it.price, it.ma3)}</span>
+                  <span>MA8 <b>${fmt(it.ma8)}</b> ${maVsPrice(it.price, it.ma8)}</span>
+                  <span>MA15 <b>${fmt(it.ma15)}</b> ${maVsPrice(it.price, it.ma15)}</span>
+                  <span>量能倍數 <b>${fmtVolRatio(it.vol_ratio)}</b></span>
+                </div>
+                <div class="metrics">
+                  <span>茂爺爺一目均衡 <b>${cloudLabel(it.ichimoku_cloud)}</b></span>
+                  <span>RSI <b>${fmt(it.rsi14)}</b></span>
+                  <span>MACD <b>${fmt(it.macd)}</b> 柱 <b>${fmt(it.macd_hist)}</b></span>
+                </div>
+                <div class="metrics">
+                  <span>cis / 遠藤洋移動停利 <b>${fmt(it.trailing_stop_price)}</b></span>
+                  <span>${it.endoh_time_cost_filter ? "🚫 " + it.endoh_time_cost_filter : "破線即停損不攤平"}</span>
+                </div>
               </div>
               <div class="reason">📝 ${it.action_reason || "N/A"}</div>
             </div>`;

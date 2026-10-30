@@ -1,0 +1,21 @@
+# =====================================================================
+# Quant Multi-Asset Engine - 網站原始碼安全防護
+# 阻擋外部直接透過網址下載原始碼 / 設定檔 / 文件，僅開放前端與數據檔
+# =====================================================================
+
+# 關閉目錄列表，避免洩漏檔案結構
+Options -Indexes
+
+# 阻擋 .git 目錄與敏感隱藏檔
+RedirectMatch 404 /\.git(/|$)
+RedirectMatch 404 /\.(env|htaccess|github)(/|$)
+
+# 阻擋原始碼、設定與文件副檔名
+<FilesMatch "\.(py|yml|yaml|md|txt|env|ini|cfg|log|sh|bat|ps1|sql)$">
+  Require all denied
+</FilesMatch>
+
+# 明確允許前端與數據檔（HTML / CSS / JS / JSON / 圖片 / 字型）
+<FilesMatch "\.(html?|css|js|json|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|otf|eot)$">
+  Require all granted
+</FilesMatch>

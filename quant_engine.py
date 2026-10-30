@@ -92,6 +92,37 @@ POLITE_SLEEP_SECONDS = 0.4
 YFINANCE_RETRY_MAX = 2
 # 【硬傷3】髒數據清洗門檻：單日漲跌幅超過 45% 視為異常（如小數點錯位多一個零）
 DIRTY_DATA_MAX_DAILY_CHANGE = 0.45
+# 【硬傷4】yfinance 連線超時保護（秒）：所有抓取帶 timeout，避免卡死
+YFINANCE_TIMEOUT_SECONDS = 15
+
+
+# ===== 五位日韓操盤名家融合參數 =====
+# 遊牧民（Nomad）：非典型均線週期與量能雷達
+NOMAD_MA_PERIODS = (3, 8, 15, 33, 45)
+# 藤本茂：一目均衡表週期
+ICHIMOKU_TENKAN_PERIOD = 9
+ICHIMOKU_KIJUN_PERIOD = 26
+ICHIMOKU_SENKOU_B_PERIOD = 52
+ICHIMOKU_SHIFT = 26
+# 藤本茂：MACD 參數
+MACD_FAST = 12
+MACD_SLOW = 26
+MACD_SIGNAL = 9
+# 遠藤洋：吊燈移動停利 = 近 20 日最高價 - TRAILING_STOP_ATR_MULT × ATR14
+TRAILING_STOP_ATR_MULT = 2.2
+# 遠藤洋時間成本過濾：跌破 MA45 且量比 < 0.8 視為「地底低量（禁買）」
+ENDOH_LOW_VOL_RATIO = 0.8
+# cis：主升段量能門檻
+CIS_MAIN_WAVE_VOL_RATIO = 1.5
+# 森口亮：每日 5 分鐘綜合評分（0~100）
+MASTER_SCORE_MAX = 100
+
+# 藤本茂「1:2:6 法則」倉位階段
+STAGE_0 = "0 - 觀望 / 破線停損（cis鐵律：嚴禁攤平）"
+STAGE_1 = "1 - 偵察試單 (1/9 倉位)"
+STAGE_2 = "2 - 順勢加碼 (1+2 = 3/9 倉位)"
+STAGE_3 = "3 - 主升滿倉 (1+2+6 = 9/9 倉位)"
+ENDOH_LOW_VOL_LABEL = "地底低量（禁買）"
 
 
 # ===== 免金鑰全球宏觀與情緒指標（Macro & Sentiment） =====
@@ -123,6 +154,45 @@ def vix_zone(vix):
     return "恐慌避險"
 
 
+def _make_yfinance_session(timeout=YFINANCE_TIMEOUT_SECONDS):
+    """建立帶連線/讀取超時的 yfinance session，避免抓取卡死。
+
+    yfinance 1.x 優先以 curl_cffi 進行瀏覽器 TLS 偽裝（避免被 Yahoo 擋）；
+    此處沿用同一後端：curl_cffi Session 直接帶 timeout，requests Session 則
+    掛上帶預設 timeout 的 HTTPAdapter。任何後端都會被強制套用超時。
+    """
+    try:
+        from curl_cffi import requests as _curl_requests
+        return _curl_requests.Session(impersonate="chrome", timeout=timeout)
+    except Exception:
+        pass
+
+    from requests.adapters import HTTPAdapter
+
+    class _TimeoutHTTPAdapter(HTTPAdapter):
+        def __init__(self, *args, **kwargs):
+            self._default_timeout = kwargs.pop("timeout", timeout)
+            super().__init__(*args, **kwargs)
+
+        def send(self, request, **kwargs):
+            kwargs.setdefault("timeout", self._default_timeout)
+            return super().send(request, **kwargs)
+
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    })
+    adapter = _TimeoutHTTPAdapter(timeout=timeout)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
 def fetch_macro_overview():
     """抓取免金鑰全球宏觀與情緒指標，回傳 dict 供 latest_signals.json 使用。"""
     overview = {
@@ -140,7 +210,10 @@ def fetch_macro_overview():
 
     for ticker, key in MACRO_TICKERS.items():
         try:
-            data = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True)
+            data = yf.Ticker(ticker, session=_make_yfinance_session()).history(
+                period="5d", interval="1d", auto_adjust=True,
+                timeout=YFINANCE_TIMEOUT_SECONDS,
+            )
             if data is not None and not data.empty:
                 closes = data["Close"].astype(float).dropna()
                 if not closes.empty:
@@ -232,6 +305,17 @@ def compute_atr(high, low, close, period=ATR_PERIOD):
     return tr.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
 
 
+def compute_macd(close: pd.Series, fast: int = MACD_FAST, slow: int = MACD_SLOW,
+                 signal: int = MACD_SIGNAL):
+    """以 EMA 計算 MACD(12,26,9)，回傳 (macd, macd_signal, macd_hist)。"""
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    macd_signal = macd.ewm(span=signal, adjust=False).mean()
+    macd_hist = macd - macd_signal
+    return macd, macd_signal, macd_hist
+
+
 def compute_indicators(df):
     """將歷史 OHLCV 轉為策略所需技術指標 DataFrame。"""
     close = df["Close"].astype(float)
@@ -265,6 +349,25 @@ def compute_indicators(df):
     ind["k_body_range_ma20"] = (
         ind["k_body_range"].abs().rolling(K_BODY_MA_P, min_periods=K_BODY_MA_P).mean()
     )
+
+    # ===== 遊牧民（Nomad）：非典型均線與量能雷達 =====
+    for period in NOMAD_MA_PERIODS:
+        ind[f"ma{period}"] = close.rolling(period, min_periods=period).mean()
+
+    # ===== 藤本茂：MACD(12,26,9) 柱狀圖 =====
+    ind["macd"], ind["macd_signal"], ind["macd_hist"] = compute_macd(close)
+
+    # ===== 藤本茂：一目均衡表（Ichimoku Cloud） =====
+    tenkan_high = high.rolling(ICHIMOKU_TENKAN_PERIOD, min_periods=ICHIMOKU_TENKAN_PERIOD).max()
+    tenkan_low = low.rolling(ICHIMOKU_TENKAN_PERIOD, min_periods=ICHIMOKU_TENKAN_PERIOD).min()
+    ind["tenkan_sen"] = (tenkan_high + tenkan_low) / 2.0
+    kijun_high = high.rolling(ICHIMOKU_KIJUN_PERIOD, min_periods=ICHIMOKU_KIJUN_PERIOD).max()
+    kijun_low = low.rolling(ICHIMOKU_KIJUN_PERIOD, min_periods=ICHIMOKU_KIJUN_PERIOD).min()
+    ind["kijun_sen"] = (kijun_high + kijun_low) / 2.0
+    ind["senkou_a"] = ((ind["tenkan_sen"] + ind["kijun_sen"]) / 2.0).shift(ICHIMOKU_SHIFT)
+    senkou_b_high = high.rolling(ICHIMOKU_SENKOU_B_PERIOD, min_periods=ICHIMOKU_SENKOU_B_PERIOD).max()
+    senkou_b_low = low.rolling(ICHIMOKU_SENKOU_B_PERIOD, min_periods=ICHIMOKU_SENKOU_B_PERIOD).min()
+    ind["senkou_b"] = ((senkou_b_high + senkou_b_low) / 2.0).shift(ICHIMOKU_SHIFT)
     return ind
 
 
@@ -286,6 +389,205 @@ def classify_horizon(latest):
     if ma20 < ma60:
         return "中線空頭"
     return "短線觀望"
+
+
+def ichimoku_cloud_position(close, senkou_a, senkou_b):
+    """判斷現價位於一目均衡表雲帶的位階：雲上 / 雲中 / 雲下。"""
+    if close is None or senkou_a is None or senkou_b is None:
+        return None
+    cloud_top = max(senkou_a, senkou_b)
+    cloud_bottom = min(senkou_a, senkou_b)
+    if close > cloud_top:
+        return "雲上"
+    if close < cloud_bottom:
+        return "雲下"
+    return "雲中"
+
+
+def compute_trailing_stop_price(high20, atr14):
+    """遠藤洋吊燈移動停利價 = 近 20 日最高價 - 2.2 × ATR14。"""
+    if high20 is None or atr14 is None:
+        return None
+    return high20 - TRAILING_STOP_ATR_MULT * atr14
+
+
+def compute_position_stage(close, ma3, ma8, ma15, ma33, ma45, macd, macd_hist,
+                           rsi, vol_ratio, cloud_pos, tenkan_sen, kijun_sen,
+                           trailing_stop_price, near_20d_high_breakout):
+    """藤本茂「1:2:6 法則」倉位階段 + cis 禁攤平風控。
+
+    依序判定（優先權高 → 低）：
+      - 破線停損（cis 鐵律：嚴禁攤平）
+      - 主升滿倉（cis 強勢順勢段）
+      - 順勢加碼
+      - 偵察試單
+    """
+    if close is None:
+        return STAGE_0
+
+    # 遠藤洋時間成本過濾：地底低量禁買
+    if (
+        ma45 is not None
+        and vol_ratio is not None
+        and close < ma45
+        and vol_ratio < ENDOH_LOW_VOL_RATIO
+    ):
+        return STAGE_0
+
+    # cis 鐵律：破線停損，嚴禁攤平
+    if trailing_stop_price is not None and close < trailing_stop_price:
+        return STAGE_0
+    if ma15 is not None and macd is not None and close < ma15 and macd < 0:
+        return STAGE_0
+
+    # 主升滿倉：cis 強勢順勢段（站上 MA3/MA8、量能放大且創波段高點）
+    above_ma3_ma8 = (
+        ma3 is not None and ma8 is not None and close > ma3 and close > ma8
+    )
+    if (
+        above_ma3_ma8
+        and vol_ratio is not None
+        and vol_ratio >= CIS_MAIN_WAVE_VOL_RATIO
+        and near_20d_high_breakout
+    ):
+        return STAGE_3
+
+    # 順勢加碼：站穩 MA15 與雲帶之上、MACD 多頭且浮盈擴大
+    above_ma15 = ma15 is not None and close > ma15
+    macd_bull = (
+        macd is not None and macd_hist is not None and macd > 0 and macd_hist > 0
+    )
+    if above_ma15 and cloud_pos == "雲上" and macd_bull:
+        return STAGE_2
+
+    # 偵察試單：RSI<30 觸及 MA45 超賣反彈，或剛站上 MA33 / 一目均衡表轉強
+    oversold_bounce = (
+        rsi is not None and rsi < 30 and ma45 is not None and close >= ma45
+    )
+    stood_above_ma33 = ma33 is not None and close > ma33
+    ichimoku_turn = (
+        tenkan_sen is not None and kijun_sen is not None and tenkan_sen > kijun_sen
+    )
+    if oversold_bounce or stood_above_ma33 or ichimoku_turn:
+        return STAGE_1
+
+    return STAGE_0
+
+
+def compute_master_score(close, ma3, ma8, ma15, ma45, cloud_pos, rsi, macd,
+                         macd_hist, vol_ratio, backtest):
+    """森口亮「每日 5 分鐘綜合評分」0~100 整數。
+
+    - 趨勢位階（MA3/8/15/45 與雲帶）：35 分
+    - 動能與量能（RSI / MACD / vol_ratio）：25 分
+    - 回測風控績效（Sharpe / Profit Factor / MDD / 近半年 OOS）：40 分
+    """
+    backtest = backtest or {}
+
+    # ===== 趨勢位階：35 分 =====
+    trend_score = 0.0
+    if close is not None:
+        for ma, weight in ((ma3, 4), (ma8, 4), (ma15, 6), (ma45, 6)):
+            if ma is not None and close > ma:
+                trend_score += weight
+    trend_score += {"雲上": 15, "雲中": 8}.get(cloud_pos, 0)  # max = 4+4+6+6+15 = 35
+
+    # ===== 動能與量能：25 分 =====
+    rsi_score = 0
+    if rsi is not None:
+        if 50 <= rsi <= 70:
+            rsi_score = 10
+        elif 40 <= rsi < 50 or 70 < rsi <= 80:
+            rsi_score = 7
+        elif 30 <= rsi < 40 or 80 < rsi <= 90:
+            rsi_score = 4
+        else:
+            rsi_score = 2
+
+    macd_score = 0
+    if macd is not None and macd_hist is not None:
+        if macd > 0 and macd_hist > 0:
+            macd_score = 10
+        elif macd > 0 or macd_hist > 0:
+            macd_score = 5
+        else:
+            macd_score = 0
+
+    vol_score = 0
+    if vol_ratio is not None:
+        if 1.0 <= vol_ratio <= 2.5:
+            vol_score = 5
+        elif vol_ratio > 2.5:
+            vol_score = 4
+        elif 0.7 <= vol_ratio < 1.0:
+            vol_score = 3
+        else:
+            vol_score = 1
+
+    momentum_score = rsi_score + macd_score + vol_score  # max = 10+10+5 = 25
+
+    # ===== 回測風控績效：40 分 =====
+    sharpe = to_float(backtest.get("sharpe_ratio"))
+    profit_factor = to_float(backtest.get("profit_factor"))
+    mdd = to_float(backtest.get("max_drawdown_pct"))
+    oos = to_float(backtest.get("oos_return_6m"))
+
+    sharpe_score = 0.0
+    if sharpe is not None:
+        # Sharpe 1.0 → 10 分、0 → 5 分、-1 → 0 分（線性夾在 0~10）
+        sharpe_score = max(0.0, min(10.0, (sharpe + 1.0) * 5.0))
+
+    pf_score = 0
+    if profit_factor is not None:
+        if profit_factor >= 2.0:
+            pf_score = 10
+        elif profit_factor >= 1.5:
+            pf_score = 8
+        elif profit_factor >= 1.2:
+            pf_score = 6
+        elif profit_factor >= 1.0:
+            pf_score = 5
+        elif profit_factor >= 0.8:
+            pf_score = 3
+        else:
+            pf_score = 0
+
+    mdd_score = 0
+    if mdd is not None:
+        abs_mdd = abs(mdd)
+        if abs_mdd <= 0.05:
+            mdd_score = 10
+        elif abs_mdd <= 0.10:
+            mdd_score = 8
+        elif abs_mdd <= 0.15:
+            mdd_score = 6
+        elif abs_mdd <= 0.20:
+            mdd_score = 4
+        elif abs_mdd <= 0.30:
+            mdd_score = 2
+        else:
+            mdd_score = 0
+
+    oos_score = 0
+    if oos is not None:
+        if oos >= 0.10:
+            oos_score = 10
+        elif oos >= 0.05:
+            oos_score = 8
+        elif oos >= 0.0:
+            oos_score = 6
+        elif oos >= -0.05:
+            oos_score = 4
+        elif oos >= -0.10:
+            oos_score = 2
+        else:
+            oos_score = 0
+
+    risk_score = sharpe_score + pf_score + mdd_score + oos_score  # max = 40
+
+    total = trend_score + momentum_score + risk_score
+    score = int(round(total))
+    return max(0, min(MASTER_SCORE_MAX, score))
 
 
 def domain_signal_series(category, symbol, ind):
@@ -1016,12 +1318,19 @@ def fetch_yfinance_history(symbol, retries=YFINANCE_RETRY_MAX):
     df_adj（auto_adjust=True）供技術指標與回測；df_raw（auto_adjust=False）供真實報價。
     抓取失敗最多重試 retries 次，每次重試前延遲 POLITE_SLEEP_SECONDS 秒。
     """
-    ticker = yf.Ticker(symbol)
+    session = _make_yfinance_session()
+    ticker = yf.Ticker(symbol, session=session)
     last_error = None
     for attempt in range(retries + 1):
         try:
-            df_adj = ticker.history(period="2y", interval="1d", auto_adjust=True)
-            df_raw = ticker.history(period="2y", interval="1d", auto_adjust=False)
+            df_adj = ticker.history(
+                period="2y", interval="1d", auto_adjust=True,
+                timeout=YFINANCE_TIMEOUT_SECONDS,
+            )
+            df_raw = ticker.history(
+                period="2y", interval="1d", auto_adjust=False,
+                timeout=YFINANCE_TIMEOUT_SECONDS,
+            )
             if df_adj is not None and not df_adj.empty and df_raw is not None and not df_raw.empty:
                 return clean_dirty_data(df_adj), clean_dirty_data(df_raw)
             last_error = "無歷史資料"
@@ -1040,7 +1349,7 @@ def fetch_yfinance_history(symbol, retries=YFINANCE_RETRY_MAX):
 def fetch_fundamentals(symbol):
     """抓取基本面資訊（殖利率 / 本益比 / 股價淨值比），失敗回傳空 dict。"""
     try:
-        return yf.Ticker(symbol).info or {}
+        return yf.Ticker(symbol, session=_make_yfinance_session()).info or {}
     except Exception as exc:
         print(f"    [warn] {symbol} 基本面取得失敗: {exc}")
         return {}
@@ -1120,6 +1429,25 @@ def fetch_and_analyze(category, symbol, name):
         "high20": None,
         "boll_upper": None,
         "boll_lower": None,
+        "ma3": None,
+        "ma8": None,
+        "ma15": None,
+        "ma33": None,
+        "ma45": None,
+        "vol_ratio": None,
+        "tenkan_sen": None,
+        "kijun_sen": None,
+        "senkou_a": None,
+        "senkou_b": None,
+        "ichimoku_cloud": None,
+        "macd": None,
+        "macd_signal": None,
+        "macd_hist": None,
+        "trailing_stop_price": None,
+        "endoh_time_cost_filter": None,
+        "near_20d_high_breakout": False,
+        "position_stage": STAGE_0,
+        "master_score": None,
         "dividend_yield": None,
         "trailing_pe": None,
         "price_to_book": None,
@@ -1243,10 +1571,73 @@ def fetch_and_analyze(category, symbol, name):
         )
         record.update(strategy)
 
+        # ===== 五位日韓操盤名家：五師指標、倉位階段與綜合評分 =====
+        prev_ind = ind.iloc[-2] if len(ind) > 1 else latest
+        prev_high20 = to_float(prev_ind.get("high20"))
+
+        last_ma3 = to_float(latest.get("ma3"))
+        last_ma8 = to_float(latest.get("ma8"))
+        last_ma15 = to_float(latest.get("ma15"))
+        last_ma33 = to_float(latest.get("ma33"))
+        last_ma45 = to_float(latest.get("ma45"))
+        last_vol_ratio = to_float(latest.get("vol_ratio"))
+        last_tenkan = to_float(latest.get("tenkan_sen"))
+        last_kijun = to_float(latest.get("kijun_sen"))
+        last_senkou_a = to_float(latest.get("senkou_a"))
+        last_senkou_b = to_float(latest.get("senkou_b"))
+        last_macd = to_float(latest.get("macd"))
+        last_macd_signal = to_float(latest.get("macd_signal"))
+        last_macd_hist = to_float(latest.get("macd_hist"))
+
+        cloud_pos = ichimoku_cloud_position(last_close, last_senkou_a, last_senkou_b)
+        trailing_stop = compute_trailing_stop_price(last_high20, last_atr)
+        near_20d_high_breakout = bool(
+            last_close is not None and prev_high20 is not None and last_close > prev_high20
+        )
+        endoh_filter = (
+            ENDOH_LOW_VOL_LABEL
+            if (
+                last_ma45 is not None
+                and last_vol_ratio is not None
+                and last_close is not None
+                and last_close < last_ma45
+                and last_vol_ratio < ENDOH_LOW_VOL_RATIO
+            )
+            else None
+        )
+
+        record["ma3"] = round(last_ma3, 4) if last_ma3 is not None else None
+        record["ma8"] = round(last_ma8, 4) if last_ma8 is not None else None
+        record["ma15"] = round(last_ma15, 4) if last_ma15 is not None else None
+        record["ma33"] = round(last_ma33, 4) if last_ma33 is not None else None
+        record["ma45"] = round(last_ma45, 4) if last_ma45 is not None else None
+        record["vol_ratio"] = round(last_vol_ratio, 4) if last_vol_ratio is not None else None
+        record["tenkan_sen"] = round(last_tenkan, 4) if last_tenkan is not None else None
+        record["kijun_sen"] = round(last_kijun, 4) if last_kijun is not None else None
+        record["senkou_a"] = round(last_senkou_a, 4) if last_senkou_a is not None else None
+        record["senkou_b"] = round(last_senkou_b, 4) if last_senkou_b is not None else None
+        record["ichimoku_cloud"] = cloud_pos
+        record["macd"] = round(last_macd, 6) if last_macd is not None else None
+        record["macd_signal"] = round(last_macd_signal, 6) if last_macd_signal is not None else None
+        record["macd_hist"] = round(last_macd_hist, 6) if last_macd_hist is not None else None
+        record["trailing_stop_price"] = round(trailing_stop, 4) if trailing_stop is not None else None
+        record["endoh_time_cost_filter"] = endoh_filter
+        record["near_20d_high_breakout"] = near_20d_high_breakout
+        record["position_stage"] = compute_position_stage(
+            last_close, last_ma3, last_ma8, last_ma15, last_ma33, last_ma45,
+            last_macd, last_macd_hist, last_rsi, last_vol_ratio, cloud_pos,
+            last_tenkan, last_kijun, trailing_stop, near_20d_high_breakout,
+        )
+        record["master_score"] = compute_master_score(
+            last_close, last_ma3, last_ma8, last_ma15, last_ma45, cloud_pos,
+            last_rsi, last_macd, last_macd_hist, last_vol_ratio,
+            record.get("backtest_strategy_1y"),
+        )
+
         # 除權息還原校正：以當日未還原現價比例，將還原價位換算回真實看盤報價
         if last_close and raw_last_close:
             price_ratio = raw_last_close / last_close
-            for key in ("ideal_buy_price", "stop_loss_price", "take_profit_price"):
+            for key in ("ideal_buy_price", "stop_loss_price", "take_profit_price", "trailing_stop_price"):
                 if record.get(key) is not None:
                     record[key] = round(record[key] * price_ratio, 4)
     except Exception as exc:

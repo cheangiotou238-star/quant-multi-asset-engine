@@ -82,6 +82,20 @@ def fmt_ratio(v):
     return f"{v:.2f}"
 
 
+def fmt_score(v):
+    """五師綜合評分（0~100 整數）格式化。"""
+    if v is None:
+        return "N/A"
+    return f"{int(round(v))}"
+
+
+def fmt_vol_ratio(v):
+    """量能倍數格式化（當日量 / 20 日均量）。"""
+    if v is None:
+        return "N/A"
+    return f"{v:.2f}x"
+
+
 def fmt_int(v):
     """整數（交易次數）格式化，None 回傳 N/A。"""
     if v is None:
@@ -125,6 +139,27 @@ def build_macro_block(macro):
     return "\n".join(lines)
 
 
+def build_leaderboard(data):
+    """森口亮前段班：依五師綜合評分排序，挑出最高贏面標的。"""
+    ranked = []
+    for items in data.get("assets", {}).values():
+        ranked.extend(items or [])
+    ranked.sort(key=lambda it: -(it.get("master_score") or -1))
+    top = ranked[:5]
+    medals = ["🥇", "🥈", "🥉"]
+    lines = []
+    for i, it in enumerate(top):
+        medal = medals[i] if i < len(medals) else f"#{i + 1}"
+        lines.append(
+            f"{medal} **{it.get('name')}**（{it.get('symbol')}）"
+            f" 評分 **{fmt_score(it.get('master_score'))}**\n"
+            f"　📦 {it.get('position_stage') or 'N/A'}｜"
+            f"量能 **{fmt_vol_ratio(it.get('vol_ratio'))}**｜"
+            f"移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**"
+        )
+    return "\n".join(lines)
+
+
 def build_embeds(data):
     embeds = []
     summary = data.get("summary", {})
@@ -141,10 +176,22 @@ def build_embeds(data):
         "footer": {"text": "Quant Multi-Asset Engine · 資料來源 Binance / Yahoo Finance / Local Cache"},
     }
     macro_block = build_macro_block(data.get("macro_overview"))
+    header_fields = []
     if macro_block:
-        header["fields"] = [
-            {"name": "🌍 全球宏觀與市場情緒溫度計", "value": macro_block, "inline": False},
-        ]
+        header_fields.append({
+            "name": "🌍 全球宏觀與市場情緒溫度計",
+            "value": macro_block,
+            "inline": False,
+        })
+    leaderboard = build_leaderboard(data)
+    if leaderboard:
+        header_fields.append({
+            "name": "🏆 五師綜合評分前段班（森口亮 5 分鐘戰情室）",
+            "value": leaderboard,
+            "inline": False,
+        })
+    if header_fields:
+        header["fields"] = header_fields
     embeds.append(header)
 
     # 每個資產類別一個 Embed
@@ -174,6 +221,10 @@ def build_embeds(data):
                 f" 夏普 **{fmt_ratio(bt.get('sharpe_ratio'))}**"
                 f" 獲利因子 **{fmt_ratio(bt.get('profit_factor'))}**\n"
                 f"🕰 近半年報酬 **{fmt_pct_signed(bt.get('oos_return_6m'))}**\n"
+                f"🎯 五師評分 **{fmt_score(it.get('master_score'))}**｜"
+                f"📦 {it.get('position_stage') or 'N/A'}\n"
+                f"📈 量能倍數 **{fmt_vol_ratio(it.get('vol_ratio'))}**｜"
+                f"🛡 移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**\n"
                 f"📦 建議倉位 **{fmt_weight(it.get('suggested_weight_pct'))}**｜"
                 f"🚪 {bt.get('last_exit_reason') or 'N/A'}｜📊 {it.get('volume_status') or 'N/A'}\n"
                 f"📝 {it.get('action_reason') or 'N/A'}"
