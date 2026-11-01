@@ -103,6 +103,20 @@ def fmt_int(v):
     return str(v)
 
 
+def fmt_pct_point(v, decimals=2):
+    """百分點數值（已為百分比，如 -4.09 即 -4.09%）格式化，不再乘以 100。"""
+    if v is None:
+        return "N/A"
+    return f"{v:.{decimals}f}%"
+
+
+def fmt_pct_point_signed(v, decimals=2):
+    """百分點數值帶正負號格式化（如 +2.82% / -4.09%）。"""
+    if v is None:
+        return "N/A"
+    return f"{v:+.{decimals}f}%"
+
+
 def ma_trend(ma20, ma60):
     if ma20 is None or ma60 is None:
         return "N/A"
@@ -111,6 +125,67 @@ def ma_trend(ma20, ma60):
     if ma20 < ma60:
         return "📉 空頭排列"
     return "➖ 糾結"
+
+
+def _to_num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_num(*vals):
+    for v in vals:
+        n = _to_num(v)
+        if n is not None:
+            return n
+    return None
+
+
+def anomalies(it):
+    """三大異動焦點：遊牧民交減陰線 / 主力級 A+ / 跌破防守止損。"""
+    out = []
+    n = it.get("nomad_signal") or ""
+    if "🔥" in n:
+        out.append(n)
+    if "🚀" in n:
+        out.append(n)
+    fd = it.get("five_dim_scores") or {}
+    if fd.get("is_a_plus"):
+        out.append("主力級 A+")
+    price = _first_num(it.get("price"))
+    sl = _first_num(it.get("stop_loss_price"), it.get("current_defense_sl"))
+    if price is not None and sl is not None and price < sl:
+        out.append("🚨 跌破防守止損")
+    return out
+
+
+def build_focus_alert(data):
+    """總覽頂部「今日異動焦點快訊」。"""
+    focus = []
+    for items in data.get("assets", {}).values():
+        for it in items or []:
+            al = anomalies(it)
+            if al:
+                focus.append(f"{it.get('symbol', '')} {al[0]}")
+    return "\n".join(focus) if focus else None
+
+
+def build_ledger_line(data):
+    """ledger_summary 單行歷史帳本驗證摘要。"""
+    ls = data.get("ledger_summary") or {}
+    if not ls or (not ls.get("total_signals") and not ls.get("evaluated")):
+        return None
+    ov = ls.get("overall") or {}
+    n_symbols = len(ls.get("by_symbol") or {})
+    return (
+        f"📒 歷史帳本：{ls.get('total_signals', 0)} 筆 / 已驗證 {ls.get('evaluated', 0)} 筆"
+        f"｜MFE {fmt_pct_point_signed(ov.get('avg_mfe_pct'))}"
+        f" MAE {fmt_pct_point_signed(ov.get('avg_mae_pct'))}"
+        f" 累積 {fmt_pct_point_signed(ov.get('avg_current_return_pct'))}"
+        f" 勝率 {fmt_pct_point(ov.get('win_rate_pct'), 1)}"
+        f"｜涵蓋 {n_symbols} 檔"
+    )
 
 
 def build_macro_block(macro):
@@ -155,7 +230,12 @@ def build_leaderboard(data):
             f" 評分 **{fmt_score(it.get('master_score'))}**\n"
             f"　📦 {it.get('position_stage') or 'N/A'}｜"
             f"量能 **{fmt_vol_ratio(it.get('vol_ratio'))}**｜"
-            f"移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**"
+            f"移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**\n"
+            f"　🏛 {it.get('market_regime') or 'N/A'}｜"
+            f"訂單流 {it.get('ofi_direction') or 'N/A'} "
+            f"VWAP20 {fmt_pct_point_signed(it.get('vwap_20d_bias'))}\n"
+            f"　🛡 防守止損 **{fmt_num(it.get('current_defense_sl'), 2)}**｜"
+            f"突破買入 **{fmt_num(it.get('breakout_entry_price'), 2)}**"
         )
     return "\n".join(lines)
 
@@ -175,8 +255,21 @@ def build_embeds(data):
         "color": GOLD,
         "footer": {"text": "Quant Multi-Asset Engine · 資料來源 Binance / Yahoo Finance / Local Cache"},
     }
-    macro_block = build_macro_block(data.get("macro_overview"))
     header_fields = []
+    focus_alert = build_focus_alert(data)
+    header_fields.append({
+        "name": "⚡ 今日異動焦點快訊",
+        "value": focus_alert or "今日無觸發異動焦點",
+        "inline": False,
+    })
+    ledger_line = build_ledger_line(data)
+    if ledger_line:
+        header_fields.append({
+            "name": "📒 歷史帳本驗證摘要",
+            "value": ledger_line,
+            "inline": False,
+        })
+    macro_block = build_macro_block(data.get("macro_overview"))
     if macro_block:
         header_fields.append({
             "name": "🌍 全球宏觀與市場情緒溫度計",
@@ -215,6 +308,9 @@ def build_embeds(data):
                 f" HIGH20 **{fmt_num(it.get('high20'), 2)}** 殖利 **{fmt_yield(it.get('dividend_yield'))}**\n"
                 f"⏱ {it.get('horizon') or 'N/A'}｜🎯 買 **{fmt_num(it.get('ideal_buy_price'), 2)}**"
                 f" 停損 **{fmt_num(it.get('stop_loss_price'), 2)}** 停利 **{fmt_num(it.get('take_profit_price'), 2)}**\n"
+                f"🏛 市場狀態 {it.get('market_regime') or 'N/A'}｜訂單流 {it.get('ofi_direction') or 'N/A'}"
+                f" VWAP20乖離 {fmt_pct_point_signed(it.get('vwap_20d_bias'))}\n"
+                f"🛡 防守止損 **{fmt_num(it.get('current_defense_sl'), 2)}**｜突破買入 **{fmt_num(it.get('breakout_entry_price'), 2)}**\n"
                 f"🏆 勝率 **{fmt_rate(bt.get('win_rate'))}** 報酬 **{fmt_rate(bt.get('strategy_return_1y'))}**"
                 f" 交易 **{fmt_int(bt.get('trade_count_1y'))}** 次\n"
                 f"📉 最大回撤 **{fmt_pct_signed(bt.get('max_drawdown_pct'))}**"
