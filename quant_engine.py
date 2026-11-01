@@ -73,12 +73,29 @@ SIGNAL_YELLOW = "🟡 價值收息買點"
 SIGNAL_RED = "🔴 減碼 / 停利警戒"
 SIGNAL_NEUTRAL = "⚪ 區間觀望"
 SIGNAL_FIRE = "🔥 爆量長紅突破 (強勢買進)"
+# 訊號一致性閘門（Signal Gatekeeper）：低分/空頭時取代「強烈買進」的校正訊號
+SIGNAL_WAIT_BREAKOUT = "⚪ 區間觀望 / 等待突破"
+SIGNAL_OVERSOLD_TRIAL = "🟡 左側超賣試單 (嚴控1/9小倉)"
 
 # 價值收息訊號適用的資產類別
 INCOME_CATEGORIES = ("REITs", "Bonds")
 # 價值收息所需的年化殖利率門檻（yfinance 回傳為小數，0.04 = 4%）
 INCOME_YIELD_THRESHOLD = 0.04
 
+# ===== 真實摩擦成本與滑點（單邊）：按資產類別區分 =====
+SINGLE_SIDE_COST = {
+    "Stocks": 0.0015,
+    "REITs": 0.0015,
+    "ETFs": 0.0015,
+    "Crypto": 0.0020,
+    "Bonds": 0.0008,
+    "Gold": 0.0008,
+}
+
+# ===== 市場狀態三態分類器 =====
+REGIME_TREND = "🔥 強趨勢推進盤"
+REGIME_RANGE = "⚖️ 箱型震盪盤"
+REGIME_PANIC = "⚡ 高波恐慌盤"
 
 # ===== 建議資金配置權重（逆波動率 Risk-Parity + 宏觀利率調節）=====
 SUGGESTED_WEIGHT_MIN_VOL = 0.005        # 波動率下限（0.5%/日），避免現金類標的權重無限放大
@@ -380,6 +397,23 @@ def compute_macd(close: pd.Series, fast: int = MACD_FAST, slow: int = MACD_SLOW,
     return macd, macd_signal, macd_hist
 
 
+def compute_adx(high, low, close, period=14):
+    """以 Wilder 平滑法計算 ADX(14) 趨勢強度指標。"""
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = pd.Series(0.0, index=close.index)
+    minus_dm = pd.Series(0.0, index=close.index)
+    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move[(up_move > down_move) & (up_move > 0)]
+    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move[(down_move > up_move) & (down_move > 0)]
+
+    tr = compute_atr(high, low, close, period=period)
+    tr_smooth = tr.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+    plus_di = 100.0 * plus_dm.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean() / tr_smooth
+    minus_di = 100.0 * minus_dm.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean() / tr_smooth
+    dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-9)
+    return dx.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+
+
 def compute_indicators(df):
     """將歷史 OHLCV 轉為策略所需技術指標 DataFrame。"""
     close = df["Close"].astype(float)
@@ -403,6 +437,22 @@ def compute_indicators(df):
     std20 = close.rolling(20, min_periods=20).std()
     ind["boll_upper"] = ind["ma20"] + 2.0 * std20
     ind["boll_lower"] = ind["ma20"] - 2.0 * std20
+
+    # ===== 市場狀態三態分類器與微觀訂單流指標 =====
+    # 布林帶寬度（%）與 ADX(14) 趨勢強度
+    ind["bb_width"] = (ind["boll_upper"] - ind["boll_lower"]) / ind["ma20"]
+    ind["adx14"] = compute_adx(high, low, close, 14)
+    # 單日訂單流不平衡（Order Flow Imbalance）與近 5 日累積淨訂單流
+    hl_range = (high - low).clip(lower=1e-9)
+    ind["ofi_bar"] = ((2.0 * close - high - low) / hl_range) * volume
+    ind["ofi_5d"] = ind["ofi_bar"].rolling(5, min_periods=1).sum()
+    ind["vol_5d_sum"] = volume.rolling(5, min_periods=1).sum()
+    # 20 日成交量加權均價（VWAP_20）
+    typical_price = (high + low + close) / 3.0
+    ind["vwap_20"] = (
+        (typical_price * volume).rolling(20, min_periods=20).sum()
+        / volume.rolling(20, min_periods=20).sum()
+    )
 
     # 第 5 章：月均量流動性與爆量長紅（p.228, p.232-237）
     ind["vol_ma20"] = volume.rolling(VOL_LENGTH, min_periods=VOL_LENGTH).mean()
@@ -558,6 +608,41 @@ def compute_position_stage(close, ma3, ma8, ma15, ma33, ma45, macd, macd_hist,
         return STAGE_1
 
     return STAGE_0
+
+
+def classify_market_regime(adx, bb_width_pctl, vol_pctl, atr_pct):
+    """市場狀態三態分類器：強趨勢推進盤 / 箱型震盪盤 / 高波恐慌盤。"""
+    if (vol_pctl is not None and vol_pctl >= 0.85) or (atr_pct is not None and atr_pct >= 0.06):
+        return REGIME_PANIC
+    if adx is not None and adx >= 25:
+        return REGIME_TREND
+    return REGIME_RANGE
+
+
+def classify_ofi_direction(ofi_5d, vol_5d):
+    """近 5 日累積淨訂單流方向：主力吸籌 / 買賣均衡 / 高檔派發。"""
+    if ofi_5d is None:
+        return None
+    threshold = 0.10 * (vol_5d or 0.0)
+    if ofi_5d > threshold:
+        return "🟢 主力主動吸籌"
+    if ofi_5d < -threshold:
+        return "🔴 高檔派發倒貨"
+    return "⚪ 買賣力道均衡"
+
+
+def compute_current_defense_sl(close, atr, category):
+    """基於現價的防守止損價：距離至少 1.5×ATR 或 -3%~-5%。"""
+    if close is None or close <= 0:
+        return None
+    pct = {
+        "Crypto": 0.05, "Stocks": 0.05, "ETFs": 0.04,
+        "REITs": 0.04, "Bonds": 0.03, "Gold": 0.03,
+    }.get(category, 0.04)
+    min_dist = pct * close
+    if atr is not None and atr > 0:
+        min_dist = max(min_dist, 1.5 * atr)
+    return round(close - min_dist, 4)
 
 
 def compute_master_score(close, ma3, ma8, ma15, ma45, cloud_pos, rsi, macd,
@@ -746,6 +831,12 @@ def _indicator_reversal_exit(category, sub, i, sig, today_sig):
     return i > 0 and float(sig.iloc[i - 1]) == 1.0 and today_sig == 0.0
 
 
+def round_trip_cost(category):
+    """回傳該資產類別的來回交易成本（單邊成本 × 2）。"""
+    single = SINGLE_SIDE_COST.get(category, 0.0015)
+    return 2.0 * single
+
+
 def backtest_strategy(signal, ind, rules=None, category=None):
     """四大出場邏輯 + 扣費回測模擬器。
 
@@ -789,6 +880,7 @@ def backtest_strategy(signal, ind, rules=None, category=None):
     atr_bt = sub["atr14"].astype(float) if "atr14" in sub.columns else None
 
     rules = rules or {}
+    cost = round_trip_cost(category)
 
     def _f(series, i):
         if series is None:
@@ -869,7 +961,7 @@ def backtest_strategy(signal, ind, rules=None, category=None):
             exit_reason = "④ 指標反轉出場"
 
         if exit_reason is not None:
-            net = today_close / entry_price - 1.0 - ROUND_TRIP_COST
+            net = today_close / entry_price - 1.0 - cost
             trades.append((net, exit_reason, entry_idx, i))
             entry_idx = None
             entry_price = None
@@ -877,7 +969,7 @@ def backtest_strategy(signal, ind, rules=None, category=None):
 
     # 收盤仍未平倉的部位：以最後收盤價結算並標記「持有中」
     if entry_idx is not None:
-        net = float(close_bt.iloc[-1]) / entry_price - 1.0 - ROUND_TRIP_COST
+        net = float(close_bt.iloc[-1]) / entry_price - 1.0 - cost
         trades.append((net, "持有中（尚未出場）", entry_idx, n - 1))
 
     if not trades:
@@ -911,6 +1003,7 @@ def _compute_risk_metrics(close_bt, trades):
         "sharpe_ratio": None,
         "profit_factor": None,
         "oos_return_6m": None,
+        "equity_curve_60d": None,
     }
     if not trades:
         return metrics
@@ -953,6 +1046,10 @@ def _compute_risk_metrics(close_bt, trades):
         equity[i] = shares * px if shares > 0 else cash
 
     equity_series = pd.Series(equity, index=close_bt.index, dtype=float)
+
+    # 最近 60 日回測淨值曲線（供 UI 迷你曲線）
+    tail60 = equity_series.tail(60)
+    metrics["equity_curve_60d"] = [round(float(v), 4) for v in tail60]
 
     # 最大回撤（負值：自高點回落的幅度）
     running_peak = equity_series.cummax()
@@ -1331,6 +1428,31 @@ def compute_signal(category, close, prev_close, ma20, ma60, rsi,
 
     # ⚪ 區間觀望
     return SIGNAL_NEUTRAL
+
+
+def _downgrade_signal(record, rsi):
+    """低分/空頭時，將強烈買進校正為區間觀望或左側超賣試單，確保 100% 邏輯一致。"""
+    if rsi is not None and rsi < FUJIMOTO_RSI_OVERSOLD:
+        record["signal"] = SIGNAL_OVERSOLD_TRIAL
+        record["position_stage"] = STAGE_1
+        record["action_reason"] = "左側超賣試單：RSI 超賣但五師評分不足/均線偏空，僅可 1/9 小倉偵察，嚴守止損"
+    else:
+        record["signal"] = SIGNAL_WAIT_BREAKOUT
+        record["position_stage"] = STAGE_0
+        record["action_reason"] = "未達突破或動能門檻，暫不追價"
+    return record
+
+
+def apply_signal_gatekeeper(record, ma20, ma60, rsi):
+    """統一最終決策閘門：主訊號、五師評分、1:2:6 倉位與底部備註 100% 一致。"""
+    signal = record.get("signal")
+    if signal != SIGNAL_GREEN:
+        return record
+    score = to_float(record.get("master_score"))
+    ma_bearish = ma20 is not None and ma60 is not None and ma20 < ma60
+    if (score is not None and score < 45) or ma_bearish:
+        return _downgrade_signal(record, rsi)
+    return record
 
 
 def clean_dirty_data(df):
@@ -2383,6 +2505,8 @@ def _domain_crypto(record, macro):
                     _dm("20 日高點突破", record.get("near_20d_high_breakout"), "bool"),
                     _dm("HIGH20", record.get("high20"), "price"),
                     _dm("ATR 移動停利", record.get("trailing_stop_price"), "price"),
+                    _dm("移動停利狀態", record.get("trailing_stop_status"), "text"),
+                    _dm("上方壓力反轉價", record.get("pressure_reversal_price"), "price"),
                     _dm("MA200 長線多空", long_short, "bool"),
                 ],
             },
@@ -2612,6 +2736,19 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         "macd_signal": None,
         "macd_hist": None,
         "trailing_stop_price": None,
+        "trailing_stop_status": None,
+        "pressure_reversal_price": None,
+        "current_defense_sl": None,
+        "breakout_entry_price": None,
+        "breakout_sl": None,
+        "market_regime": None,
+        "ofi_5d": None,
+        "ofi_direction": None,
+        "vwap_20d_bias": None,
+        "corr_60d": None,
+        "corr_penalty": None,
+        "sparkline_60d": [],
+        "backtest_equity_60d": [],
         "endoh_time_cost_filter": None,
         "near_20d_high_breakout": False,
         "position_stage": STAGE_0,
@@ -2855,6 +2992,32 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
             record.get("backtest_strategy_1y"),
         )
 
+        # ===== 訊號一致性閘門：低分/空頭時禁止「強烈買進」，校正主訊號與倉位 =====
+        apply_signal_gatekeeper(record, last_ma20, last_ma60, last_rsi)
+
+        # ===== 市場狀態三態分類器與微觀訂單流 / VWAP 乖離 =====
+        adx14 = to_float(latest.get("adx14"))
+        bb_width_series = ind["bb_width"].dropna()
+        bb_width_pctl = None
+        if not bb_width_series.empty:
+            last_bbw = to_float(bb_width_series.iloc[-1])
+            if last_bbw is not None:
+                bb_width_pctl = float((bb_width_series <= last_bbw).mean())
+        vol_pctl, _ann_vol = _historical_vol_percentile(ind)
+        atr_pct = (last_atr / last_close) if (last_atr is not None and last_close) else None
+        record["market_regime"] = classify_market_regime(adx14, bb_width_pctl, vol_pctl, atr_pct)
+
+        ofi_5d_val = to_float(latest.get("ofi_5d"))
+        vol_5d_val = to_float(latest.get("vol_5d_sum"))
+        record["ofi_5d"] = round(ofi_5d_val, 2) if ofi_5d_val is not None else None
+        record["ofi_direction"] = classify_ofi_direction(ofi_5d_val, vol_5d_val)
+
+        vwap_20 = to_float(latest.get("vwap_20"))
+        vwap_bias = None
+        if last_close is not None and vwap_20 is not None and vwap_20 > 0:
+            vwap_bias = (last_close - vwap_20) / vwap_20 * 100.0
+        record["vwap_20d_bias"] = round(vwap_bias, 2) if vwap_bias is not None else None
+
         # ===== 三大微觀實戰訊號：遊牧民交減陰線 × 藤本茂6大重點 × 遠藤洋Tenbagger =====
         record.update(compute_nomad_micro_signals(ind, record["price"]))
         record.update(compute_fujimoto_micro_signals(latest, info, est, record))
@@ -2871,11 +3034,46 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
                 record[_key] = None
 
         # 除權息還原校正：以當日未還原現價比例，將還原價位換算回真實看盤報價
+        raw_atr = last_atr
         if last_close and raw_last_close:
             price_ratio = raw_last_close / last_close
             for key in ("ideal_buy_price", "stop_loss_price", "take_profit_price", "trailing_stop_price"):
                 if record.get(key) is not None:
                     record[key] = round(record[key] * price_ratio, 4)
+            raw_atr = last_atr * price_ratio if last_atr is not None else None
+
+        # ===== 防守止損 / 突破防線 / 移動停利狀態（基準價不再錯位） =====
+        close_price = to_float(record.get("price"))
+        if symbol in CASH_PARKING_SYMBOLS:
+            record["current_defense_sl"] = None
+            record["breakout_entry_price"] = None
+            record["breakout_sl"] = None
+        else:
+            record["current_defense_sl"] = compute_current_defense_sl(close_price, raw_atr, category)
+            ideal_buy = to_float(record.get("ideal_buy_price"))
+            if ideal_buy is not None and close_price is not None and ideal_buy > close_price:
+                record["breakout_entry_price"] = ideal_buy
+                record["breakout_sl"] = record.get("stop_loss_price")
+            else:
+                record["breakout_entry_price"] = None
+                record["breakout_sl"] = None
+
+        ts = to_float(record.get("trailing_stop_price"))
+        if close_price is not None and ts is not None:
+            if close_price < ts:
+                record["trailing_stop_status"] = "未觸發 (現價低於多頭防線)"
+                record["pressure_reversal_price"] = ts
+            else:
+                record["trailing_stop_status"] = "已站上多頭防線（移動停利生效）"
+                record["pressure_reversal_price"] = ts
+        else:
+            record["trailing_stop_status"] = None
+            record["pressure_reversal_price"] = None
+
+        # 60 日收盤價陣列（SVG 迷你走勢圖）與回測淨值小曲線
+        spark = ind["close"].dropna().tail(60)
+        record["sparkline_60d"] = [round(float(v), 4) for v in spark]
+        record["backtest_equity_60d"] = (record.get("backtest_strategy_1y") or {}).get("equity_curve_60d")
     except Exception as exc:
         print(f"    [error] {symbol} 處理失敗: {exc}")
 
@@ -2930,6 +3128,89 @@ def compute_suggested_weights(records, macro_overview):
         max_sym = max(pct, key=lambda k: pct[k])
         pct[max_sym] = round(pct[max_sym] + diff, 2)
     return pct
+
+
+def _load_returns_series(symbol):
+    """讀取本地歷史 CSV 的每日收盤報酬率序列（供跨資產相關性計算）。"""
+    path = os.path.join(HISTORY_DIR, f"{symbol}.csv")
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path, index_col=0, parse_dates=True)
+        close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        if len(close) < 30:
+            return None
+        return close.pct_change().dropna()
+    except Exception:
+        return None
+
+
+def compute_corr_penalty(symbol, category, returns_map):
+    """計算標的與同類別（等權基準）近 60 日滾動相關係數。"""
+    ser = returns_map.get(symbol)
+    if ser is None:
+        return None
+    peers = [s for s in ASSET_UNIVERSE.get(category, {}) if s != symbol and s in returns_map]
+    if not peers:
+        return None
+    frames = [returns_map[s].rename(s) for s in peers]
+    try:
+        bench = pd.concat(frames, axis=1, join="inner").mean(axis=1).dropna()
+    except Exception:
+        return None
+    if bench.empty:
+        return None
+    common = ser.index.intersection(bench.index)
+    if len(common) < 30:
+        return None
+    a = ser.loc[common].tail(60)
+    b = bench.loc[common].tail(60)
+    if len(a) < 30:
+        return None
+    return to_float(a.corr(b))
+
+
+def corr_penalty_value(corr, macro_overview):
+    """高相關同向波動且市場風險偏高時，回傳倉位折減比例（0~0.2）。"""
+    if corr is None:
+        return None
+    macro = macro_overview or {}
+    vix = to_float(macro.get("vix"))
+    fng = to_float(macro.get("crypto_fear_greed"))
+    risk_high = (vix is not None and vix > 25.0) or (fng is not None and fng >= 75.0)
+    if not risk_high:
+        return 0.0
+    if corr > 0.7:
+        return 0.20
+    if corr > 0.6:
+        return 0.10
+    return 0.0
+
+
+def apply_risk_adjustments(records, macro_overview):
+    """依市場狀態（高波恐慌盤折半）與跨資產相關性（corr_penalty）微調建議倉位。"""
+    returns_map = {}
+    for r in records:
+        sym = r.get("symbol")
+        ser = _load_returns_series(sym)
+        if ser is not None:
+            returns_map[sym] = ser
+
+    for r in records:
+        sym = r.get("symbol")
+        corr = compute_corr_penalty(sym, r.get("category"), returns_map)
+        penalty = corr_penalty_value(corr, macro_overview)
+        r["corr_60d"] = round(corr, 4) if corr is not None else None
+        r["corr_penalty"] = penalty
+
+        regime = r.get("market_regime")
+        regime_factor = 0.5 if regime == REGIME_PANIC else 1.0
+        r["regime_weight_factor"] = regime_factor
+
+        base = to_float(r.get("suggested_weight_pct"))
+        if base is not None:
+            factor = regime_factor * (1.0 - (penalty or 0.0))
+            r["suggested_weight_pct"] = round(base * factor, 2)
 
 
 def build_summary(records):
@@ -3056,28 +3337,45 @@ def _evaluate_historical_ledger():
     for _, row in ledger.iterrows():
         symbol = str(row.get("symbol", ""))
         sig_date = row.get("date")
-        entry = to_float(row.get("close_price"))
-        if pd.isna(sig_date) or entry is None or entry <= 0:
+        if pd.isna(sig_date):
             continue
         df = _load_history(symbol)
         if df is None or df.empty:
             continue
 
-        # 訊號於收盤後發出，故績效自「訊號日之後」開始計算
-        future = df[df.index > sig_date]
-        if future.empty:
+        # 日期對齊：針對非週末交易的股票/REITs/債券/ETF/黃金，自動對齊該標的
+        # CSV 中「最近一個有效交易日」收盤價，避免週末訊號日找不到交易日而漏算。
+        prior = df.index[df.index <= sig_date]
+        if prior.empty:
+            continue
+        ref_date = prior[-1]
+        entry = to_float(df.loc[ref_date, "Close"])
+        if entry is None or entry <= 0:
             continue
 
-        mfe = to_float((future["High"].max() / entry - 1.0) * 100.0)
-        mae = to_float((future["Low"].min() / entry - 1.0) * 100.0)
-        cur = to_float((future["Close"].iloc[-1] / entry - 1.0) * 100.0)
+        # 績效自「訊號日（對齊後）之後」開始計算
+        future = df[df.index > ref_date]
+        if future.empty:
+            # 尚無前向資料（訊號為最新交易日）：以 0% 計入，確保 16 檔全數納入帳本
+            mfe = 0.0
+            mae = 0.0
+            cur = 0.0
+            fwd30 = fwd90 = fwd180 = None
+        else:
+            mfe = to_float((future["High"].max() / entry - 1.0) * 100.0)
+            mae = to_float((future["Low"].min() / entry - 1.0) * 100.0)
+            cur = to_float((future["Close"].iloc[-1] / entry - 1.0) * 100.0)
 
-        def _fwd_return(days):
-            target = sig_date + pd.Timedelta(days=days)
-            sub = df[df.index >= target]
-            if sub.empty:
-                return None
-            return to_float((sub["Close"].iloc[0] / entry - 1.0) * 100.0)
+            def _fwd_return(days):
+                target = ref_date + pd.Timedelta(days=days)
+                sub = df[df.index >= target]
+                if sub.empty:
+                    return None
+                return to_float((sub["Close"].iloc[0] / entry - 1.0) * 100.0)
+
+            fwd30 = _fwd_return(30)
+            fwd90 = _fwd_return(90)
+            fwd180 = _fwd_return(180)
 
         rows.append({
             "date": sig_date.strftime("%Y-%m-%d"),
@@ -3085,9 +3383,9 @@ def _evaluate_historical_ledger():
             "mfe_pct": _round_or_none(mfe, 2),
             "mae_pct": _round_or_none(mae, 2),
             "current_return_pct": _round_or_none(cur, 2),
-            "return_30d_pct": _round_or_none(_fwd_return(30), 2),
-            "return_90d_pct": _round_or_none(_fwd_return(90), 2),
-            "return_180d_pct": _round_or_none(_fwd_return(180), 2),
+            "return_30d_pct": _round_or_none(fwd30, 2),
+            "return_90d_pct": _round_or_none(fwd90, 2),
+            "return_180d_pct": _round_or_none(fwd180, 2),
         })
 
     summary["total_signals"] = len(ledger)
@@ -3175,6 +3473,11 @@ def main():
     weights = compute_suggested_weights(all_records, macro_overview)
     for r in all_records:
         r["suggested_weight_pct"] = weights.get(r["symbol"])
+
+    # 市場狀態（高波恐慌盤折半）與跨資產相關性（corr_penalty）風險折減
+    apply_risk_adjustments(all_records, macro_overview)
+
+    for r in all_records:
         if r.get("asset_model_type") == "cash_parking_pool":
             _set_domain_metric(r, "全市場建議現金停泊比例", r["suggested_weight_pct"])
 
