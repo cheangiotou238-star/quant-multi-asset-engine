@@ -160,6 +160,14 @@ def anomalies(it):
     return out
 
 
+def slippage_badge(it):
+    """【裝甲4】滑點緩衝標籤：僅在啟動極端踩踏滑點時顯示。"""
+    sp = _to_num(it.get("stress_slippage_pct"))
+    if sp is None or sp <= 0:
+        return None
+    return f"[滑點緩衝: -{sp:.2f}% | 含滑點安全倉位]"
+
+
 def build_focus_alert(data):
     """總覽頂部「今日異動焦點快訊」。"""
     focus = []
@@ -262,6 +270,14 @@ def build_embeds(data):
         "value": focus_alert or "今日無觸發異動焦點",
         "inline": False,
     })
+    # 【裝甲1】後廚斷供報警：若有標的降級本地快取，自動標註於總覽 Embed
+    system_health = data.get("system_health") or {}
+    if system_health.get("fallback_count"):
+        header_fields.append({
+            "name": "⚠️ 數據源降級提示",
+            "value": f"{system_health['fallback_count']} 檔標的使用本地快取運算",
+            "inline": False,
+        })
     ledger_line = build_ledger_line(data)
     if ledger_line:
         header_fields.append({
@@ -297,6 +313,7 @@ def build_embeds(data):
                 f"{it.get('name', '')}（{it.get('symbol', '')}）"
             )
             bt = it.get("backtest_strategy_1y") or {}
+            slip_badge = slippage_badge(it)
             # 出場法則為「領域」共用，顯示於類別 Embed 描述，避免每檔重複撐爆 6000 字限制
             exit_rule_desc = it.get("exit_rule_desc") or exit_rule_desc
             value = (
@@ -323,6 +340,7 @@ def build_embeds(data):
                 f"🛡 移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**\n"
                 f"📦 建議倉位 **{fmt_weight(it.get('suggested_weight_pct'))}**｜"
                 f"🚪 {bt.get('last_exit_reason') or 'N/A'}｜📊 {it.get('volume_status') or 'N/A'}\n"
+                f"{slip_badge + chr(10) if slip_badge else ''}"
                 f"🔭 {it.get('nomad_signal') or '—'}｜短打 +1% **{fmt_num(it.get('nomad_tp_1pct'), 2)}** +3% **{fmt_num(it.get('nomad_tp_3pct'), 2)}** -5% **{fmt_num(it.get('nomad_sl_5pct'), 2)}**\n"
                 f"🧓 茂爺爺 PBR **{fmt_num(it.get('pbr'), 2)}** 殖利 **{fmt_yield(it.get('dividend_yield'))}** 6大 **{fmt_int(it.get('fujimoto_6_checks'))}/6**｜遠藤洋 {it.get('endo_entry_rule') or '—'}\n"
                 f"📝 {it.get('action_reason') or 'N/A'}"

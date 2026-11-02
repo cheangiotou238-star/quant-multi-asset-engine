@@ -18,8 +18,10 @@ import datetime
 import json
 import math
 import os
+import random
 import sys
 import time
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -92,6 +94,50 @@ SINGLE_SIDE_COST = {
     "Gold": 0.0008,
 }
 
+# ===== 裝甲4：極端踩踏動態滑點緩衝（Stress Slippage Buffer，單位：百分比點）=====
+# 常態摩擦成本維持：股/ETF 0.15%、幣 0.20%、債/金 0.08%
+EXPECTED_SLIPPAGE_PCT = {
+    "Stocks": 0.15,
+    "REITs": 0.15,
+    "ETFs": 0.15,
+    "Crypto": 0.20,
+    "Bonds": 0.08,
+    "Gold": 0.08,
+}
+# 極端踩踏滑點緩衝下限：Stocks/REITs/ETFs 0.40%、Crypto 0.80%、Bonds/Gold 0.20%
+STRESS_SLIPPAGE_BASE_PCT = {
+    "Stocks": 0.40,
+    "REITs": 0.40,
+    "ETFs": 0.40,
+    "Crypto": 0.80,
+    "Bonds": 0.20,
+    "Gold": 0.20,
+}
+# 極端踩踏滑點緩衝上限：Stocks/REITs/ETFs 0.60%、Crypto 1.50%、Bonds/Gold 0.20%
+STRESS_SLIPPAGE_MAX_PCT = {
+    "Stocks": 0.60,
+    "REITs": 0.60,
+    "ETFs": 0.60,
+    "Crypto": 1.50,
+    "Bonds": 0.20,
+    "Gold": 0.20,
+}
+# 高波動幣種（SOL）極端滑點緩衝固定 1.50%
+STRESS_SLIPPAGE_HIGH_VOL_SYMBOLS = {"SOL-USD"}
+
+# ===== 裝甲3：美股冬夏令時差與「未收盤半根 K 線」時間守衛 =====
+# 各交易所當地交易時段：(時區, (開盤時, 開盤分), (收盤時, 收盤分))；None 表示 24/7 全天候
+MARKET_SESSION_RULES = {
+    "America/New_York": (9, 30, 16, 0),   # 美股/美債/黃金 ETF
+    "Asia/Taipei": (9, 0, 13, 30),        # 台股
+    "Asia/Hong_Kong": (9, 30, 16, 0),     # 港股
+    "UTC_24_7": None,                     # 加密貨幣 24/7 全天候
+}
+
+# 未收盤 K 線標記文字
+BAR_CLOSED_LABEL = "✅ 已收盤"
+BAR_INTRADAY_LABEL = "⏳ 盤中即時K線 (未收盤)"
+
 # ===== 市場狀態三態分類器 =====
 REGIME_TREND = "🔥 強趨勢推進盤"
 REGIME_RANGE = "⚖️ 箱型震盪盤"
@@ -118,9 +164,16 @@ CRYPTO_BINANCE_SYMBOLS = {
 SOURCE_BINANCE = "Binance Official API"
 SOURCE_YAHOO = "Yahoo Finance (Cleaned)"
 SOURCE_CACHE = "Local CSV Cache"
+# 資料來源健康狀態（裝甲1：單一標的隔離保護 + 後廚斷供報警）
+DATA_SOURCE_LIVE = "🟢 即時連線 (Live)"
+DATA_SOURCE_FALLBACK = "🟠 降級快取 (Cached Fallback)"
+DATA_SOURCE_FAILED = "🔴 資料取得失敗"
 # 【硬傷1】禮貌延遲（每檔標的抓取間隔）與最多失敗重試次數
 POLITE_SLEEP_SECONDS = 0.4
-YFINANCE_RETRY_MAX = 2
+YFINANCE_RETRY_MAX = 3
+# 【裝甲1】指數退避重試：最多 3 次，等待 2s -> 5s -> 10s + 隨機 0.5~1.5s jitter
+RETRY_BACKOFF_SECONDS = (2.0, 5.0, 10.0)
+RETRY_JITTER_RANGE = (0.5, 1.5)
 # 【硬傷3】髒數據清洗門檻：單日漲跌幅超過 45% 視為異常（如小數點錯位多一個零）
 DIRTY_DATA_MAX_DAILY_CHANGE = 0.45
 # 【硬傷4】yfinance 連線超時保護（秒）：所有抓取帶 timeout，避免卡死
@@ -333,6 +386,132 @@ def to_float(value):
     if math.isnan(f) or math.isinf(f):
         return None
     return f
+
+
+# ===== 裝甲3：未收盤 K 線時間守衛 =====
+def market_session_for(symbol):
+    """依標的代號回傳 (時區規則鍵, 開盤時, 開盤分, 收盤時, 收盤分)。
+
+    加密貨幣為 24/7 全天候，無「未收盤」問題，故回傳 None。
+    """
+    if symbol.endswith(".TW"):
+        return "Asia/Taipei", MARKET_SESSION_RULES["Asia/Taipei"]
+    if symbol.endswith(".HK"):
+        return "Asia/Hong_Kong", MARKET_SESSION_RULES["Asia/Hong_Kong"]
+    if symbol in CRYPTO_BINANCE_SYMBOLS or symbol.endswith("-USD"):
+        return "UTC", MARKET_SESSION_RULES["UTC_24_7"]
+    return "America/New_York", MARKET_SESSION_RULES["America/New_York"]
+
+
+def bar_close_status(symbol, now=None):
+    """判斷標的當前最後一根日 K 線是否已收盤。
+
+    回傳 (is_bar_closed: bool, label: str)。
+    加密貨幣 24/7 全天候視為「已收盤」；週末休市視為「已收盤」。
+    """
+    now = now or datetime.datetime.now()
+    tz_name, session = market_session_for(symbol)
+    if session is None:  # 24/7 全天候（加密貨幣）
+        return True, BAR_CLOSED_LABEL
+
+    open_h, open_m, close_h, close_m = session
+    try:
+        local = now.astimezone(ZoneInfo(tz_name))
+    except Exception:
+        return True, BAR_CLOSED_LABEL
+
+    if local.weekday() >= 5:  # 週六/週日休市
+        return True, BAR_CLOSED_LABEL
+
+    cur_minutes = local.hour * 60 + local.minute
+    open_minutes = open_h * 60 + open_m
+    close_minutes = close_h * 60 + close_m
+    if open_minutes <= cur_minutes < close_minutes:
+        return False, BAR_INTRADAY_LABEL
+    return True, BAR_CLOSED_LABEL
+
+
+# ===== 裝甲4：動態壓力滑點模型與實盤安全倉位 =====
+def compute_stress_slippage_pct(category, symbol, record, macro_overview=None):
+    """計算極端踩踏滑點緩衝（百分比點），無壓力時回傳 0.0。
+
+    觸發條件（任一即啟動「踩踏滑點懲罰係數 2.5x~4.0x」）：
+      - market_regime == 高波恐慌盤
+      - VIX > 25
+      - 當日振幅 > 2 * ATR
+      - 觸發止損砍倉
+    """
+    normal = EXPECTED_SLIPPAGE_PCT.get(category, 0.15)
+    triggers = []
+    if record.get("market_regime") == REGIME_PANIC:
+        triggers.append("高波恐慌盤")
+    vix = to_float((macro_overview or {}).get("vix"))
+    if vix is not None and vix > 25:
+        triggers.append(f"VIX {vix:.1f} > 25")
+    if record.get("amplitude_over_2atr"):
+        triggers.append("振幅 > 2×ATR")
+    if record.get("stop_loss_triggered"):
+        triggers.append("觸發止損砍倉")
+    if not triggers:
+        return 0.0
+
+    base = STRESS_SLIPPAGE_BASE_PCT.get(category, normal)
+    cap = STRESS_SLIPPAGE_MAX_PCT.get(category, normal)
+    if symbol in STRESS_SLIPPAGE_HIGH_VOL_SYMBOLS:
+        return cap
+    # 踩踏滑點懲罰係數：觸發越多越接近 4.0x（單一觸發 2.5x）
+    multiplier = min(4.0, 2.0 + 0.5 * len(triggers))
+    slippage = normal * multiplier
+    return round(max(base, min(cap, slippage)), 4)
+
+
+def compute_effective_stop_distance_pct(record):
+    """有效止損距離 % = |現價 - 防守止損價| / 現價 + stress_slippage_pct。"""
+    price = to_float(record.get("price"))
+    stop = to_float(record.get("current_defense_sl"))
+    if stop is None:
+        stop = to_float(record.get("stop_loss_price"))
+    stress = to_float(record.get("stress_slippage_pct")) or 0.0
+    if price is None or stop is None or price <= 0:
+        return None
+    return round(abs(price - stop) / price * 100.0 + stress, 4)
+
+
+def compute_safe_position(record, capital=100_000.0, max_loss_pct=1.0):
+    """吧台部位試算：把極端滑點緩衝算進 1% 最大虧損額度內。
+
+    安全投入金額 = (總本金 * 單筆容忍虧損%) / 有效止損距離 %
+    """
+    price = to_float(record.get("price"))
+    entry = to_float(record.get("breakout_entry_price"))
+    if entry is None:
+        entry = to_float(record.get("ideal_buy_price"))
+    if entry is None:
+        entry = price
+    stop = to_float(record.get("current_defense_sl"))
+    if stop is None:
+        stop = to_float(record.get("stop_loss_price"))
+    stress = to_float(record.get("stress_slippage_pct")) or 0.0
+    if price is None or entry is None or stop is None or entry <= 0 or stop <= 0:
+        return None
+
+    eff_dist_pct = abs(price - stop) / price * 100.0 + stress
+    if eff_dist_pct <= 0:
+        return None
+    risk_budget = capital * max_loss_pct / 100.0
+    safe_invest = risk_budget / (eff_dist_pct / 100.0)
+    shares = int(safe_invest // entry)
+    invest = shares * entry
+    max_loss = invest * eff_dist_pct / 100.0
+    return {
+        "capital": capital,
+        "max_loss_pct": max_loss_pct,
+        "effective_stop_distance_pct": round(eff_dist_pct, 4),
+        "safe_invest_amount": round(safe_invest, 2),
+        "safe_shares": shares,
+        "invest_amount": round(invest, 2),
+        "max_loss_amount": round(max_loss, 2),
+    }
 
 
 def normalize_yield(value):
@@ -1352,8 +1531,47 @@ def evaluate_domain_strategy(category, symbol, name, ind, dividend_yield=None,
     return result
 
 
+def _detect_and_heal_split_discontinuity(symbol, new_df, old_df):
+    """【裝甲2】拆股與除權息跳空斷層自動修復器。
+
+    回傳 True 表示偵測到拆股/除權息或歷史基準不一致，應捨棄舊 CSV 快取，
+    直接以最新抓回的完整歷史序列覆寫重存，杜絕「均線錯亂而誤喊暴跌停損」。
+    偵測條件：
+      1. 新抓回資料含非零的 Stock Splits / Dividends 欄位。
+      2. 新資料單日異常跳空 > 35%。
+      3. 與舊 CSV 重疊日期的收盤價不一致（超過 0.5%）。
+    """
+    if old_df is None or old_df.empty:
+        return False
+
+    # 1. 拆股/除權息欄位非零
+    for col in ("Stock Splits", "Dividends"):
+        if col in new_df.columns:
+            vals = pd.to_numeric(new_df[col], errors="coerce").fillna(0.0)
+            if (vals != 0.0).any():
+                return True
+
+    # 2. 新資料單日異常跳空 > 35%（無預警變動）
+    close = pd.to_numeric(new_df["Close"], errors="coerce").dropna()
+    if len(close) > 1:
+        daily = (close / close.shift(1) - 1.0).abs()
+        if (daily > 0.35).any():
+            return True
+
+    # 3. 重疊日期收盤價基準不一致
+    common = new_df.index.intersection(old_df.index)
+    if len(common) > 0:
+        new_c = pd.to_numeric(new_df["Close"], errors="coerce")
+        old_c = pd.to_numeric(old_df["Close"], errors="coerce")
+        denom = old_c[common].abs().replace(0.0, float("nan"))
+        diff = ((new_c[common] - old_c[common]).abs() / denom).dropna()
+        if (diff > 0.005).any():
+            return True
+    return False
+
+
 def save_history(symbol: str, df: pd.DataFrame):
-    """將歷史數據防重複（依日期去重）寫入 CSV。"""
+    """將歷史數據防重複（依日期去重）寫入 CSV，並內建拆股/除權息斷層修復。"""
     if df is None or df.empty:
         return
     df = df.copy()
@@ -1363,20 +1581,28 @@ def save_history(symbol: str, df: pd.DataFrame):
     df.index.name = "Date"
 
     csv_path = os.path.join(HISTORY_DIR, f"{symbol}.csv")
+    old = None
     if os.path.exists(csv_path):
         try:
             old = pd.read_csv(csv_path, index_col=0, parse_dates=True)
             if old.index.tz is not None:
                 old.index = old.index.tz_localize(None)
-            df = pd.concat([old, df])
         except Exception as exc:  # 讀取失敗則直接重建
             print(f"    [warn] 讀取既有歷史失敗，重建 {symbol}: {exc}")
 
-    df = df[~df.index.duplicated(keep="last")]
-    df.sort_index(inplace=True)
+    if _detect_and_heal_split_discontinuity(symbol, df, old):
+        print(f"    [heal] {symbol} 偵測到拆股/除權息斷層，捨棄舊快取，以最新完整歷史覆寫")
+        merged = df
+    elif old is not None and not old.empty:
+        merged = pd.concat([old, df])
+    else:
+        merged = df
+
+    merged = merged[~merged.index.duplicated(keep="last")]
+    merged.sort_index(inplace=True)
     # 容量防膨脹鎖：合併去重後只保留最近 MAX_HISTORY_ROWS 個交易日
-    df = df.tail(MAX_HISTORY_ROWS)
-    df.to_csv(csv_path, encoding="utf-8")
+    merged = merged.tail(MAX_HISTORY_ROWS)
+    merged.to_csv(csv_path, encoding="utf-8")
 
 def compute_signal(category, close, prev_close, ma20, ma60, rsi,
                    boll_lower, prev_boll_lower, dividend_yield,
@@ -1483,6 +1709,13 @@ def clean_dirty_data(df):
     daily_change = (df["Close"] / prev_close - 1.0).abs()
     valid &= daily_change.fillna(0.0) <= DIRTY_DATA_MAX_DAILY_CHANGE
 
+    # 裝甲2：拆股/除權息日為合法公司行為跳空（非髒數據），予以保留供斷層修復器偵測
+    corporate_action = pd.Series(False, index=df.index)
+    for col in ("Stock Splits", "Dividends"):
+        if col in df.columns:
+            corporate_action |= pd.to_numeric(df[col], errors="coerce").fillna(0.0) != 0.0
+    valid |= corporate_action
+
     cleaned = df[valid]
     removed = len(df) - len(cleaned)
     if removed:
@@ -1490,41 +1723,63 @@ def clean_dirty_data(df):
     return cleaned
 
 
-def fetch_binance_klines(symbol):
-    """【幣安官方 API】抓取加密貨幣日 K 線（OHLCV）。
+def fetch_binance_klines(symbol, retries=YFINANCE_RETRY_MAX):
+    """【幣安官方 API】抓取加密貨幣日 K 線（OHLCV），內建指數退避重試。
 
     直接請求幣安官方正式公開接口，回傳最精準的一級數據源日 K 線；
-    若連線失敗（如網路地區限制），由呼叫端自動 fallback 至 yfinance。
+    HTTP 429/403/連線逾時/空資料皆重試（2s->5s->10s + jitter）；
+    若最終仍失敗（如網路地區限制），由呼叫端自動 fallback 至 yfinance。
     """
     pair = CRYPTO_BINANCE_SYMBOLS.get(symbol)
     if not pair:
         raise ValueError(f"{symbol} 沒有對應的 Binance 交易對")
 
-    resp = requests.get(
-        BINANCE_KLINES_URL,
-        params={"symbol": pair, "interval": "1d", "limit": 500},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    rows = resp.json()
-    if not isinstance(rows, list) or not rows:
-        raise ValueError(f"{symbol} Binance 回傳空資料或格式異常")
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.get(
+                BINANCE_KLINES_URL,
+                params={"symbol": pair, "interval": "1d", "limit": 500},
+                timeout=15,
+            )
+            if resp.status_code in (429, 403):
+                last_error = f"HTTP {resp.status_code}"
+            else:
+                resp.raise_for_status()
+                rows = resp.json()
+                if isinstance(rows, list) and rows:
+                    df = pd.DataFrame(rows, columns=[
+                        "open_time", "Open", "High", "Low", "Close", "Volume",
+                        "close_time", "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
+                    ])
+                    df = df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+                    df.index = pd.to_datetime([int(row[0]) for row in rows], unit="ms")
+                    df.index.name = "Date"
+                    return clean_dirty_data(df)
+                last_error = "回傳空資料或格式異常"
+        except Exception as exc:
+            last_error = str(exc)
+        if attempt < retries:
+            backoff = RETRY_BACKOFF_SECONDS[min(attempt, len(RETRY_BACKOFF_SECONDS) - 1)]
+            jitter = random.uniform(*RETRY_JITTER_RANGE)
+            wait = backoff + jitter
+            print(
+                f"    [warn] {symbol} Binance 第 {attempt + 1} 次抓取失敗"
+                f"（{last_error}），{wait:.2f}s 後重試"
+            )
+            time.sleep(wait)
 
-    df = pd.DataFrame(rows, columns=[
-        "open_time", "Open", "High", "Low", "Close", "Volume",
-        "close_time", "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
-    ])
-    df = df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
-    df.index = pd.to_datetime([int(row[0]) for row in rows], unit="ms")
-    df.index.name = "Date"
-    return clean_dirty_data(df)
+    print(f"    [warn] {symbol} Binance 抓取失敗（已重試 {retries} 次）: {last_error}")
+    raise ValueError(f"{symbol} Binance 抓取失敗: {last_error}")
 
 
 def fetch_yfinance_history(symbol, retries=YFINANCE_RETRY_MAX):
-    """【硬傷1】以禮貌延遲 + 失敗重試抓取 yfinance 歷史，回傳 (df_adj, df_raw)。
+    """【裝甲1】以指數退避 + 隨機 jitter 抓取 yfinance 歷史，回傳 (df_adj, df_raw)。
 
-    df_adj（auto_adjust=True）供技術指標與回測；df_raw（auto_adjust=False）供真實報價。
-    抓取失敗最多重試 retries 次，每次重試前延遲 POLITE_SLEEP_SECONDS 秒。
+    df_adj（auto_adjust=True）供回測；df_raw（auto_adjust=False）為未復權真實交易價，
+    統一作為技術指標與止損定位的價格基準（裝甲2：對齊券商盤面 Raw Close）。
+    抓取失敗最多重試 retries 次，等待 2s -> 5s -> 10s + 隨機 0.5~1.5s jitter，
+    並針對 HTTP 429 / 403 / 連線逾時 / 空 DataFrame 皆觸發重試。
     """
     session = _make_yfinance_session()
     ticker = yf.Ticker(symbol, session=session)
@@ -1541,15 +1796,18 @@ def fetch_yfinance_history(symbol, retries=YFINANCE_RETRY_MAX):
             )
             if df_adj is not None and not df_adj.empty and df_raw is not None and not df_raw.empty:
                 return clean_dirty_data(df_adj), clean_dirty_data(df_raw)
-            last_error = "無歷史資料"
+            last_error = "回傳空 DataFrame"
         except Exception as exc:
             last_error = str(exc)
         if attempt < retries:
+            backoff = RETRY_BACKOFF_SECONDS[min(attempt, len(RETRY_BACKOFF_SECONDS) - 1)]
+            jitter = random.uniform(*RETRY_JITTER_RANGE)
+            wait = backoff + jitter
             print(
                 f"    [warn] {symbol} yfinance 第 {attempt + 1} 次抓取失敗"
-                f"（{last_error}），{POLITE_SLEEP_SECONDS}s 後重試"
+                f"（{last_error}），{wait:.2f}s 後重試"
             )
-            time.sleep(POLITE_SLEEP_SECONDS)
+            time.sleep(wait)
     print(f"    [warn] {symbol} yfinance 抓取失敗（已重試 {retries} 次）: {last_error}")
     return None, None
 
@@ -2152,8 +2410,12 @@ def _compute_excel_valuation(symbol, category, price, info, ind, latest,
     }
 
 
-def compute_nomad_micro_signals(ind, price):
-    """遊牧民「交減陰線」暴漲前兆 + 買後三大原則 + MetaLab 假利多高檔陷阱。"""
+def compute_nomad_micro_signals(ind, price, is_bar_closed=True):
+    """遊牧民「交減陰線」暴漲前兆 + 買後三大原則 + MetaLab 假利多高檔陷阱。
+
+    裝甲3：交減陰線需確認日線收盤量縮；當最後一根為盤中未收盤 K 線時，
+    改參考前一交易日已確認收盤價，避免盤中假跌破誤觸訊號。
+    """
     result = {
         "nomad_signal": None,
         "nomad_tp_1pct": None,
@@ -2200,9 +2462,10 @@ def compute_nomad_micro_signals(ind, price):
         not_at_high = close < high20
 
     washout = cond_vol & bearish & in_support & not_at_high
-    today_washout = bool(washout.iloc[-1]) if len(washout) else False
-    yesterday_washout = bool(washout.iloc[-2]) if len(washout) > 1 else False
-    today_bullish = bool(close.iloc[-1] > open_.iloc[-1]) if len(ind) else False
+    bar_idx = -1 if is_bar_closed else -2
+    today_washout = bool(washout.iloc[bar_idx]) if len(washout) > abs(bar_idx) else False
+    yesterday_washout = bool(washout.iloc[bar_idx - 1]) if len(washout) > abs(bar_idx - 1) else False
+    today_bullish = bool(close.iloc[bar_idx] > open_.iloc[bar_idx]) if len(ind) > abs(bar_idx) else False
 
     if today_washout:
         result["nomad_signal"] = "🔥 交減陰線 (量縮黑K買點)"
@@ -2216,18 +2479,18 @@ def compute_nomad_micro_signals(ind, price):
         result["nomad_sl_5pct"] = round(price * (1.0 - NOMAD_SL_5PCT), 2)
 
     if "vol_drop_prev" in ind:
-        result["vol_drop_prev"] = bool(ind["vol_drop_prev"].iloc[-1]) if len(ind) else None
-    mv = to_float(max_vol_10d.iloc[-1]) if max_vol_10d is not None else None
-    vm = to_float(vol_ma20.iloc[-1]) if vol_ma20 is not None else None
+        result["vol_drop_prev"] = bool(ind["vol_drop_prev"].iloc[bar_idx]) if len(ind) > abs(bar_idx) else None
+    mv = to_float(max_vol_10d.iloc[bar_idx]) if max_vol_10d is not None and len(ind) > abs(bar_idx) else None
+    vm = to_float(vol_ma20.iloc[bar_idx]) if vol_ma20 is not None and len(ind) > abs(bar_idx) else None
     result["max_vol_10d"] = _round_or_none(mv, 2)
     result["max_vol_10d_ratio"] = _round_or_none(mv / vm if (mv is not None and vm) else None, 2)
 
     low_60d = ind.get("low_60d")
     rsi = ind.get("rsi14")
     if low_60d is not None and rsi is not None:
-        low60 = to_float(low_60d.iloc[-1])
-        r = to_float(rsi.iloc[-1])
-        c = to_float(close.iloc[-1])
+        low60 = to_float(low_60d.iloc[bar_idx])
+        r = to_float(rsi.iloc[bar_idx])
+        c = to_float(close.iloc[bar_idx])
         if low60 and c and r is not None and (c - low60) / low60 > NOMAD_NEWS_TRAP_GAIN and r > NOMAD_NEWS_TRAP_RSI:
             result["news_trap_warning"] = "⚠️ 高檔利多鈍化警戒 (勿當分母)"
 
@@ -2711,6 +2974,10 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         "name": name,
         "category": category,
         "data_source": None,
+        "data_source_status": None,
+        "last_bar_date": None,
+        "is_bar_closed": True,
+        "bar_close_status": None,
         "price": None,
         "change_pct": None,
         "ma20": None,
@@ -2786,6 +3053,12 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         "daily_turnover_val": None,
         "insider_ownership": None,
         "market_cap": None,
+        "expected_slippage_pct": None,
+        "stress_slippage_pct": None,
+        "effective_stop_distance_pct": None,
+        "amplitude_over_2atr": False,
+        "stop_loss_triggered": False,
+        "position_plan": None,
         "backtest_strategy_1y": {
             "win_rate": None,
             "strategy_return_1y": None,
@@ -2803,6 +3076,13 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         # 抓取失敗自動 fallback 至本地快取（./data/history/{symbol}.csv）。
         df_adj, df_raw, data_source = load_market_data(category, symbol)
         record["data_source"] = data_source
+        record["data_source_status"] = (
+            DATA_SOURCE_LIVE if data_source in (SOURCE_BINANCE, SOURCE_YAHOO)
+            else DATA_SOURCE_FALLBACK if data_source == SOURCE_CACHE
+            else DATA_SOURCE_FAILED
+        )
+        if df_raw is not None and not df_raw.empty:
+            record["last_bar_date"] = pd.Timestamp(df_raw.index[-1]).strftime("%Y-%m-%d")
 
         if df_adj is None or df_adj.empty or df_raw is None or df_raw.empty:
             print(f"    [warn] {symbol} 無可用歷史資料（yfinance 與本地快取皆失敗）")
@@ -2845,8 +3125,9 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
             record["trailing_pe"] = None
             record["price_to_book"] = None
 
-        # 以還原價計算所有技術指標與回測
-        ind = compute_indicators(df_adj)
+        # 裝甲2：統一採用「未除權息還原之真實交易價 (auto_adjust=False)」計算技術指標與止損定位，
+        # 使 MA20/MA200/current_defense_sl 與券商盤面 Raw Close 處於同一價格基準。
+        ind = compute_indicators(df_raw)
         ind = ind[ind["close"].notna()].copy()
         if ind.empty:
             print(f"    [warn] {symbol} 指標資料不足")
@@ -2862,6 +3143,15 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
             return record
         raw_last_close = to_float(raw_close.iloc[-1])
         raw_prev_close = to_float(raw_close.iloc[-2])
+
+        # 裝甲3：未收盤 K 線時間守衛（美股冬夏令 / 台股 / 港股 / 加密貨幣 24/7）
+        is_bar_closed, bar_close_label = bar_close_status(symbol)
+        record["is_bar_closed"] = is_bar_closed
+        record["bar_close_status"] = bar_close_label
+        # 盤中未收盤時，破線停損改參考前一交易日已確認收盤價，防止盤中假跌破誤觸停損
+        bar_idx = -1 if is_bar_closed else -2
+        confirmed_close_adj = to_float(ind["close"].iloc[bar_idx]) if len(ind) > abs(bar_idx) else None
+        confirmed_close_raw = to_float(raw_close.iloc[bar_idx]) if len(raw_close) > abs(bar_idx) else None
 
         last_close = to_float(latest.get("close"))
         adj_prev_close = to_float(ind["close"].iloc[-2]) if len(ind) > 1 else None
@@ -2981,8 +3271,12 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         record["trailing_stop_price"] = round(trailing_stop, 4) if trailing_stop is not None else None
         record["endoh_time_cost_filter"] = endoh_filter
         record["near_20d_high_breakout"] = near_20d_high_breakout
+        # 裝甲3：破線停損改參考已確認收盤價，防止盤中假跌破誤觸停損
+        decision_close = (
+            confirmed_close_adj if (confirmed_close_adj is not None and not is_bar_closed) else last_close
+        )
         record["position_stage"] = compute_position_stage(
-            last_close, last_ma3, last_ma8, last_ma15, last_ma33, last_ma45,
+            decision_close, last_ma3, last_ma8, last_ma15, last_ma33, last_ma45,
             last_macd, last_macd_hist, last_rsi, last_vol_ratio, cloud_pos,
             last_tenkan, last_kijun, trailing_stop, near_20d_high_breakout,
         )
@@ -3019,7 +3313,7 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         record["vwap_20d_bias"] = round(vwap_bias, 2) if vwap_bias is not None else None
 
         # ===== 三大微觀實戰訊號：遊牧民交減陰線 × 藤本茂6大重點 × 遠藤洋Tenbagger =====
-        record.update(compute_nomad_micro_signals(ind, record["price"]))
+        record.update(compute_nomad_micro_signals(ind, record["price"], is_bar_closed=is_bar_closed))
         record.update(compute_fujimoto_micro_signals(latest, info, est, record))
         record.update(compute_endo_micro_signals(latest, ind, record, info))
 
@@ -3059,8 +3353,12 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
                 record["breakout_sl"] = None
 
         ts = to_float(record.get("trailing_stop_price"))
-        if close_price is not None and ts is not None:
-            if close_price < ts:
+        # 裝甲3：移動停利破線判定同樣參考已確認收盤價，避免盤中假跌破
+        break_close = (
+            confirmed_close_raw if (confirmed_close_raw is not None and not is_bar_closed) else close_price
+        )
+        if break_close is not None and ts is not None:
+            if break_close < ts:
                 record["trailing_stop_status"] = "未觸發 (現價低於多頭防線)"
                 record["pressure_reversal_price"] = ts
             else:
@@ -3069,6 +3367,25 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         else:
             record["trailing_stop_status"] = None
             record["pressure_reversal_price"] = None
+
+        # ===== 裝甲4：極端踩踏動態滑點緩衝與實盤安全倉位 =====
+        raw_high = to_float(df_raw["High"].astype(float).dropna().iloc[-1])
+        raw_low = to_float(df_raw["Low"].astype(float).dropna().iloc[-1])
+        record["amplitude_over_2atr"] = bool(
+            raw_high is not None and raw_low is not None
+            and raw_atr is not None and raw_atr > 0
+            and (raw_high - raw_low) > 2.0 * raw_atr
+        )
+        defense_sl = to_float(record.get("current_defense_sl"))
+        record["stop_loss_triggered"] = bool(
+            close_price is not None and defense_sl is not None and close_price < defense_sl
+        )
+        record["expected_slippage_pct"] = EXPECTED_SLIPPAGE_PCT.get(category, 0.15)
+        record["stress_slippage_pct"] = compute_stress_slippage_pct(
+            category, symbol, record, macro_overview
+        )
+        record["effective_stop_distance_pct"] = compute_effective_stop_distance_pct(record)
+        record["position_plan"] = compute_safe_position(record)
 
         # 60 日收盤價陣列（SVG 迷你走勢圖）與回測淨值小曲線
         spark = ind["close"].dropna().tail(60)
@@ -3489,11 +3806,26 @@ def main():
         f"已驗證 {ledger_summary.get('evaluated', 0)} 筆"
     )
 
+    # ===== 裝甲1：後廚斷供報警（system_health）=====
+    live_count = sum(1 for r in all_records if r.get("data_source") in (SOURCE_BINANCE, SOURCE_YAHOO))
+    fallback_count = sum(1 for r in all_records if r.get("data_source") == SOURCE_CACHE)
+    failed_symbols = [
+        r["symbol"] for r in all_records
+        if r.get("data_source") is None or r.get("data_source_status") == DATA_SOURCE_FAILED
+    ]
+    system_health = {
+        "live_count": live_count,
+        "fallback_count": fallback_count,
+        "failed_symbols": failed_symbols,
+        "degraded": fallback_count > 0,
+    }
+
     payload = {
         "generated_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "summary": summary,
         "macro_overview": macro_overview,
         "ledger_summary": ledger_summary,
+        "system_health": system_health,
         "assets": assets,
     }
 
