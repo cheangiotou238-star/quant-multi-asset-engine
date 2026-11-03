@@ -79,6 +79,13 @@ SIGNAL_FIRE = "🔥 爆量長紅突破 (強勢買進)"
 SIGNAL_WAIT_BREAKOUT = "⚪ 區間觀望 / 等待突破"
 SIGNAL_OVERSOLD_TRIAL = "🟡 左側超賣試單 (嚴控1/9小倉)"
 
+# 破綻2：禁止新建多單的防守訊號集合（減碼/停利警戒、區間觀望、等待突破）
+DEFENSIVE_SIGNALS = {
+    SIGNAL_RED,
+    SIGNAL_NEUTRAL,
+    SIGNAL_WAIT_BREAKOUT,
+}
+
 # 價值收息訊號適用的資產類別
 INCOME_CATEGORIES = ("REITs", "Bonds")
 # 價值收息所需的年化殖利率門檻（yfinance 回傳為小數，0.04 = 4%）
@@ -138,10 +145,14 @@ MARKET_SESSION_RULES = {
 BAR_CLOSED_LABEL = "✅ 已收盤"
 BAR_INTRADAY_LABEL = "⏳ 盤中即時K線 (未收盤)"
 
-# ===== 市場狀態三態分類器 =====
-REGIME_TREND = "🔥 強趨勢推進盤"
+# ===== 市場狀態分類器 =====
+# 破綻1 修正：強趨勢須區分多空方向，避免大跌段（VWAP 乖離為負）仍被誤標為「推進盤」。
+REGIME_TREND_BULL = "🔥 多頭強趨勢推進盤"
+REGIME_TREND_BEAR = "📉 空頭強趨勢主跌段"
 REGIME_RANGE = "⚖️ 箱型震盪盤"
 REGIME_PANIC = "⚡ 高波恐慌盤"
+# 向後相容：舊 REGIME_TREND 一律指向多頭強趨勢推進盤
+REGIME_TREND = REGIME_TREND_BULL
 
 # ===== 建議資金配置權重（逆波動率 Risk-Parity + 宏觀利率調節）=====
 SUGGESTED_WEIGHT_MIN_VOL = 0.005        # 波動率下限（0.5%/日），避免現金類標的權重無限放大
@@ -789,12 +800,22 @@ def compute_position_stage(close, ma3, ma8, ma15, ma33, ma45, macd, macd_hist,
     return STAGE_0
 
 
-def classify_market_regime(adx, bb_width_pctl, vol_pctl, atr_pct):
-    """市場狀態三態分類器：強趨勢推進盤 / 箱型震盪盤 / 高波恐慌盤。"""
+def classify_market_regime(adx, bb_width_pctl, vol_pctl, atr_pct,
+                           close=None, ma20=None, ma60=None):
+    """市場狀態分類器：多頭強趨勢 / 空頭強趨勢主跌 / 箱型震盪 / 高波恐慌。
+
+    破綻1 修正：強趨勢（ADX ≥ 25）不再籠統標為「推進盤」，而是結合趨勢方向
+    （Close > MA20 且 MA20 >= MA60 為多頭方向，反之為空頭方向）拆分，避免大跌段
+    （VWAP 乖離為負）被誤標為「🔥 強趨勢推進盤」。
+    """
     if (vol_pctl is not None and vol_pctl >= 0.85) or (atr_pct is not None and atr_pct >= 0.06):
         return REGIME_PANIC
     if adx is not None and adx >= 25:
-        return REGIME_TREND
+        if close is not None and ma20 is not None and ma60 is not None:
+            bullish = bool(close > ma20 and ma20 >= ma60)
+        else:
+            bullish = True  # 資料不足時保守歸為多頭推進，避免誤標空頭主跌
+        return REGIME_TREND_BULL if bullish else REGIME_TREND_BEAR
     return REGIME_RANGE
 
 
@@ -808,6 +829,409 @@ def classify_ofi_direction(ofi_5d, vol_5d):
     if ofi_5d < -threshold:
         return "🔴 高檔派發倒貨"
     return "⚪ 買賣力道均衡"
+
+
+# ===== CTA 六大標準策略投票矩陣（技巧 61 & 68~73） =====
+def compute_cta_ensemble(ind):
+    """向量化計算 CTA 六大經典策略當下訊號（+1 多 / 0 中立 / -1 空）。
+
+    1. 突破策略（技巧 68/91）：突破近 20 日唐奇安高點為多，跌破 10 日低點為空。
+    2. 均線策略（技巧 69/92）：MA8 > MA25 且 Close > MA25 為多，反之為空。
+    3. 布林通道策略（技巧 70/93）：突破中軌且通道開口擴張為多，跌破中軌為空。
+    4. RSI 策略（技巧 71/94）：由下往上穿越 35（超賣轉強）或 50~70 強勢區為多。
+    5. ATR 通道策略（技巧 72/95）：Close > MA20 + 1.2*ATR14 順勢突破為多。
+    6. 乖離率策略（技巧 73/96）：極端負乖離收斂或溫和正乖離為多，過熱為空。
+    """
+    result = {
+        "cta_vote_score": None,
+        "cta_vote_long": 0,
+        "cta_vote_short": 0,
+        "cta_net": 0,
+        "cta_strategies": [],
+    }
+    if ind is None or ind.empty:
+        return result
+
+    close = ind["close"].astype(float)
+    high = ind["high"].astype(float)
+    low = ind["low"].astype(float)
+    ma8 = ind["ma8"].astype(float) if "ma8" in ind else None
+    ma20 = ind["ma20"].astype(float)
+    ma25 = ind["ma25"].astype(float) if "ma25" in ind else None
+    atr14 = ind["atr14"].astype(float)
+    rsi14 = ind["rsi14"].astype(float)
+    bb_width = ind["bb_width"].astype(float) if "bb_width" in ind else None
+
+    def _last(s, k=-1):
+        if s is None:
+            return None
+        s = s.dropna()
+        if s.empty or len(s) <= abs(k):
+            return None
+        return to_float(s.iloc[k])
+
+    def _prev(s):
+        return _last(s, -2)
+
+    c = _last(close)
+    strategies = []
+
+    # 1. 突破策略：唐奇安 20 高 / 10 低（用前一日的通道，避免用今日資料自證）
+    donchian_high = high.rolling(20, min_periods=20).max().shift(1)
+    donchian_low = low.rolling(10, min_periods=10).min().shift(1)
+    dh = _last(donchian_high)
+    dl = _last(donchian_low)
+    if c is not None and dh is not None and c > dh:
+        s1, t1 = 1, "🟢 突破20日高點"
+    elif c is not None and dl is not None and c < dl:
+        s1, t1 = -1, "🔴 跌破10日低點"
+    else:
+        s1, t1 = 0, "⚪ 通道內整理"
+    strategies.append(("突破", s1, t1))
+
+    # 2. 均線策略
+    m8 = _last(ma8)
+    m25 = _last(ma25)
+    if m8 is not None and m25 is not None and m8 > m25 and c is not None and c > m25:
+        s2, t2 = 1, "🟢 MA8>MA25 且站上 MA25"
+    elif m8 is not None and m25 is not None and m8 < m25 and c is not None and c < m25:
+        s2, t2 = -1, "🔴 MA8<MA25 且跌破 MA25"
+    else:
+        s2, t2 = 0, "⚪ 均線糾結"
+    strategies.append(("均線", s2, t2))
+
+    # 3. 布林通道策略：中軌 = MA20，開口擴張 = 當日 bb_width > 前一日
+    m20 = _last(ma20)
+    bw = _last(bb_width)
+    bw_prev = _prev(bb_width)
+    if m20 is not None and c is not None and c > m20 and bw is not None and bw_prev is not None and bw > bw_prev:
+        s3, t3 = 1, "🟢 突破中軌且開口擴張"
+    elif m20 is not None and c is not None and c < m20:
+        s3, t3 = -1, "🔴 跌破布林中軌"
+    else:
+        s3, t3 = 0, "⚪ 布林中軌附近"
+    strategies.append(("布林", s3, t3))
+
+    # 4. RSI 策略
+    r = _last(rsi14)
+    rp = _prev(rsi14)
+    cross_up_35 = r is not None and rp is not None and rp <= 35 and r > 35
+    strong_zone = r is not None and 50 <= r <= 70
+    cross_down_70 = r is not None and rp is not None and rp > 70 and r <= 70
+    if cross_up_35 or strong_zone:
+        s4, t4 = 1, "🟢 超賣轉強 / 強勢區"
+    elif cross_down_70 or (r is not None and r >= 80):
+        s4, t4 = -1, "🔴 過熱回落"
+    else:
+        s4, t4 = 0, "⚪ RSI 中性"
+    strategies.append(("RSI", s4, t4))
+
+    # 5. ATR 通道策略
+    a = _last(atr14)
+    if a is not None and m20 is not None and c is not None:
+        upper = m20 + 1.2 * a
+        lower = m20 - 1.2 * a
+        if c > upper:
+            s5, t5 = 1, "🟢 順勢突破 ATR 上軌"
+        elif c < lower:
+            s5, t5 = -1, "🔴 跌破 ATR 下軌"
+        else:
+            s5, t5 = 0, "⚪ ATR 通道內"
+    else:
+        s5, t5 = 0, "⚪ 資料不足"
+    strategies.append(("ATR", s5, t5))
+
+    # 6. 乖離率策略 BIAS_20
+    bias = (close - ma20) / ma20
+    b = _last(bias)
+    bp = _prev(bias)
+    if b is not None and bp is not None and b < -0.08 and b > bp:
+        s6, t6 = 1, "🟢 負乖離收斂"
+    elif b is not None and 0 <= b <= 0.05:
+        s6, t6 = 1, "🟢 溫和正乖離"
+    elif b is not None and b > 0.15:
+        s6, t6 = -1, "🔴 正乖離過熱"
+    else:
+        s6, t6 = 0, "⚪ 乖離中性"
+    strategies.append(("乖離", s6, t6))
+
+    long_cnt = sum(1 for _, s, _ in strategies if s > 0)
+    short_cnt = sum(1 for _, s, _ in strategies if s < 0)
+    net = long_cnt - short_cnt
+    result["cta_vote_long"] = long_cnt
+    result["cta_vote_short"] = short_cnt
+    result["cta_net"] = net
+    result["cta_strategies"] = [
+        {"name": name, "signal": s, "status": t} for name, s, t in strategies
+    ]
+    if long_cnt >= short_cnt:
+        result["cta_vote_score"] = f"{long_cnt}/6 看多"
+    else:
+        result["cta_vote_score"] = f"{short_cnt}/6 看空"
+    return result
+
+
+# ===== 幣安原生 Taker 主動買盤佔比（技巧 84，純現貨安全版） =====
+def compute_taker_buy_sentiment(df):
+    """近 5 日真實 taker_buy_ratio = 主動買入量 / 總成交量（回傳百分比數值）。"""
+    if df is None or df.empty or "taker_base" not in df.columns:
+        return None, None
+    try:
+        t = pd.to_numeric(df["taker_base"], errors="coerce").dropna()
+        v = pd.to_numeric(df["Volume"], errors="coerce").dropna()
+        common = t.index.intersection(v.index)
+        t = t.loc[common].tail(5)
+        v = v.loc[common].tail(5)
+        t_sum = float(t.sum())
+        v_sum = float(v.sum())
+        if not v_sum:
+            return None, None
+        ratio = t_sum / v_sum
+        label = (
+            "🟢 真實主動買盤吸籌" if ratio > 0.52
+            else "🔴 主動賣盤砸盤" if ratio < 0.48
+            else "⚪ 買賣力道均衡"
+        )
+        return round(ratio * 100.0, 2), label
+    except Exception:
+        return None, None
+
+
+def fetch_binance_klines_4h(symbol, limit=60):
+    """多時間單位 4H K 線（技巧 77）：抓取 4h 級別最近 60 根，計算 MA20 與 RSI。"""
+    pair = CRYPTO_BINANCE_SYMBOLS.get(symbol)
+    if not pair or OFFLINE_MODE:
+        return None
+    try:
+        resp = requests.get(
+            BINANCE_KLINES_URL,
+            params={"symbol": pair, "interval": "4h", "limit": limit},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not isinstance(rows, list) or len(rows) < 20:
+            return None
+        closes = pd.Series([float(r[4]) for r in rows])
+        ma20 = float(closes.rolling(20, min_periods=20).mean().iloc[-1])
+        rsi = float(compute_rsi(closes, 14).iloc[-1])
+        last = float(closes.iloc[-1])
+        return {
+            "close_4h": round(last, 4),
+            "ma20_4h": round(ma20, 4),
+            "rsi_4h": round(rsi, 2),
+        }
+    except Exception as exc:
+        print(f"    [warn] {symbol} Binance 4h K 線抓取失敗: {exc}")
+        return None
+
+
+def compute_mtf_4h_resonance(record, h4):
+    """4H + 1D 多時間單位共振（技巧 77）。"""
+    if not h4:
+        return None
+    close = to_float(record.get("price"))
+    daily_ma20 = to_float(record.get("ma20"))
+    h4_close = to_float(h4.get("close_4h"))
+    h4_ma20 = to_float(h4.get("ma20_4h"))
+    if daily_ma20 is None:
+        return None
+    daily_bull = close is not None and close > daily_ma20
+    h4_bull = h4_close is not None and h4_ma20 is not None and h4_close > h4_ma20
+    if daily_bull and h4_bull:
+        return "🟢 4H+1D 雙週期多頭共振"
+    if not daily_bull and not h4_bull:
+        return "🔴 4H+1D 雙週期空頭"
+    return "⚪ 週期分歧"
+
+
+def fetch_binance_funding_rate(symbol):
+    """免費公開資金費率情緒溫度計（技巧 32 現貨避險應用）。
+
+    僅讀取幣安公開免簽名 premiumIndex 的 lastFundingRate 指標，絕不碰任何合約交易。
+    """
+    pair = CRYPTO_BINANCE_SYMBOLS.get(symbol)
+    if not pair or OFFLINE_MODE:
+        return None, None
+    url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={pair}"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        payload = resp.json()
+        rate = to_float(payload.get("lastFundingRate"))
+        if rate is None:
+            return None, None
+        rate_pct = round(rate * 100.0, 4)
+        if rate_pct > 0.05:
+            label = "🔥 槓桿過熱警戒 (多頭擁擠，警惕回調)"
+        elif rate_pct < -0.05:
+            label = "🧊 空頭擁擠 (逼空反彈機會)"
+        else:
+            label = "⚖️ 中性"
+        return rate_pct, label
+    except Exception as exc:
+        print(f"    [warn] {symbol} 資金費率抓取失敗: {exc}")
+        return None, None
+
+
+def compute_overfit_check(backtest):
+    """技巧 75、76：樣本內/樣本外穩定度檢核，輸出是否參數鈍化。"""
+    bt = backtest or {}
+    insample = to_float(bt.get("strategy_return_1y"))
+    oos = to_float(bt.get("oos_return_6m"))
+    if insample is None or oos is None:
+        return None
+    if (insample >= 0 > oos) or (insample < 0 < oos):
+        return "⚠️ 參數鈍化警戒"
+    if insample > 0 and oos < insample * 0.20:
+        return "⚠️ 參數鈍化警戒"
+    if insample < 0 and oos < insample:
+        return "⚠️ 參數鈍化警戒"
+    return "✅ 樣本外穩健"
+
+
+# ===== 破綻3：交減陰線後轉強噴發閘門 =====
+def apply_nomad_gatekeeper(record, ind, is_bar_closed):
+    """確保「🚀 交減陰線後轉強噴發」與下方卡片主訊號 100% 一致。
+
+    條件：master_score >= 45、主訊號非減碼/觀望、change_pct > 0.5%、
+    收陽線（Close > Open）且站上 MA8。
+    """
+    if (record.get("nomad_signal") or "") != "🚀 交減陰線後轉強噴發":
+        return record
+    score = to_float(record.get("master_score"))
+    signal = record.get("signal")
+    chg = to_float(record.get("change_pct"))
+    if (score is not None and score < 45) or signal in DEFENSIVE_SIGNALS or signal == SIGNAL_OVERSOLD_TRIAL:
+        record["nomad_signal"] = None
+        return record
+    bar_idx = -1 if is_bar_closed else -2
+    if ind is None or len(ind) <= abs(bar_idx):
+        record["nomad_signal"] = None
+        return record
+    close = to_float(ind["close"].iloc[bar_idx])
+    open_ = to_float(ind["open"].iloc[bar_idx])
+    ma8 = to_float(ind["ma8"].iloc[bar_idx]) if "ma8" in ind else None
+    if (
+        (chg is None or chg <= 0.5)
+        or (close is None or open_ is None or close <= open_)
+        or (ma8 is None or close <= ma8)
+    ):
+        record["nomad_signal"] = None
+    return record
+
+
+# ===== 破綻2：防守訊號倉位強制歸零 + 釋出配額累加至 SGOV =====
+def _defensive_position_plan(record):
+    return {
+        "capital": 100000.0,
+        "max_loss_pct": 1.0,
+        "effective_stop_distance_pct": to_float(record.get("effective_stop_distance_pct")),
+        "safe_invest_amount": 0.0,
+        "safe_shares": 0,
+        "invest_amount": 0.0,
+        "max_loss_amount": 0.0,
+        "note": "減碼/空頭主跌/跌破防守止損：禁止新建多單，建議倉位 0.0%（僅保留原持倉停損平倉提示）",
+    }
+
+
+def enforce_defensive_zero_weights(records):
+    """破綻2：減碼/空頭主跌/跌破防守止損的標的，新買單建議倉位強制 0.0%。
+
+    釋出的資金配額累加至 SGOV（美元現金停泊池）建議停泊比例。
+    """
+    freed = 0.0
+    for r in records:
+        if r.get("asset_model_type") == "cash_parking_pool":
+            continue
+        signal = r.get("signal")
+        regime = r.get("market_regime")
+        stop_triggered = bool(r.get("stop_loss_triggered"))
+        defensive = (
+            signal in DEFENSIVE_SIGNALS
+            or regime == REGIME_TREND_BEAR
+            or stop_triggered
+        )
+        r["defensive_zero_weight"] = defensive
+        if not defensive:
+            continue
+        w = to_float(r.get("suggested_weight_pct"))
+        if w and w > 0:
+            freed += w
+        r["suggested_weight_pct"] = 0.0
+        r["position_plan"] = _defensive_position_plan(r)
+    if freed > 0:
+        for r in records:
+            if r.get("asset_model_type") == "cash_parking_pool":
+                base = to_float(r.get("suggested_weight_pct")) or 0.0
+                r["suggested_weight_pct"] = round(base + freed, 2)
+
+
+# ===== 技巧 87/88：K 線缺口自動偵測與補齊 =====
+def detect_history_gaps(df, category, max_gap_days=2):
+    """檢查時間序列是否有遺漏天數（Gap），回傳 (gap_count, gap_days, gap_ranges)。"""
+    if df is None or df.empty or len(df) < 2:
+        return 0, 0, []
+    idx = pd.DatetimeIndex(pd.to_datetime(df.index)).sort_values()
+    threshold = max_gap_days if category == "Crypto" else 5
+    gaps = []
+    total_days = 0
+    prev = idx[0]
+    for cur in idx[1:]:
+        diff = (cur - prev).days
+        if diff > threshold:
+            gaps.append((prev, cur))
+            total_days += diff - 1
+        prev = cur
+    return len(gaps), total_days, gaps
+
+
+def fetch_binance_klines_range(symbol, start_ts, end_ts):
+    """向 Binance 補齊特定時間區間的日 K 線（技巧 87/88 缺口回補）。"""
+    pair = CRYPTO_BINANCE_SYMBOLS.get(symbol)
+    if not pair:
+        return None
+    try:
+        resp = requests.get(
+            BINANCE_KLINES_URL,
+            params={
+                "symbol": pair,
+                "interval": "1d",
+                "startTime": int(start_ts.timestamp() * 1000),
+                "endTime": int(end_ts.timestamp() * 1000),
+                "limit": 1000,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not isinstance(rows, list) or not rows:
+            return None
+        df = pd.DataFrame(rows, columns=[
+            "open_time", "Open", "High", "Low", "Close", "Volume",
+            "close_time", "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
+        ])
+        df = df[["Open", "High", "Low", "Close", "Volume", "taker_base"]].astype(float)
+        df.index = pd.to_datetime([int(row[0]) for row in rows], unit="ms")
+        df.index.name = "Date"
+        return clean_dirty_data(df)
+    except Exception as exc:
+        print(f"    [warn] {symbol} 缺口區間補齊失敗 ({start_ts}~{end_ts}): {exc}")
+        return None
+
+
+def fill_binance_gaps(symbol, df):
+    """偵測並補齊幣安日 K 線缺口（技巧 87/88）。"""
+    gap_count, gap_days, gaps = detect_history_gaps(df, "Crypto")
+    if not gaps:
+        return df
+    print(f"    [gap] {symbol} 偵測到 {gap_count} 個 K 線缺口（約 {gap_days} 天），嘗試向 Binance 補齊")
+    for start, end in gaps:
+        chunk = fetch_binance_klines_range(symbol, start, end)
+        if chunk is not None and not chunk.empty:
+            df = pd.concat([df, chunk])
+    df = df[~df.index.duplicated(keep="last")].sort_index()
+    return df
 
 
 def compute_current_defense_sl(close, atr, category):
@@ -1752,7 +2176,7 @@ def fetch_binance_klines(symbol, retries=YFINANCE_RETRY_MAX):
                         "open_time", "Open", "High", "Low", "Close", "Volume",
                         "close_time", "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
                     ])
-                    df = df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+                    df = df[["Open", "High", "Low", "Close", "Volume", "taker_base"]].astype(float)
                     df.index = pd.to_datetime([int(row[0]) for row in rows], unit="ms")
                     df.index.name = "Date"
                     return clean_dirty_data(df)
@@ -1890,6 +2314,7 @@ def load_market_data(category, symbol):
         try:
             df = fetch_binance_klines(symbol)
             if df is not None and not df.empty:
+                df = fill_binance_gaps(symbol, df)
                 return df, df.copy(), SOURCE_BINANCE
             print(f"    [warn] {symbol} Binance 回傳空資料，改採 yfinance")
         except Exception as exc:
@@ -2773,6 +3198,25 @@ def _domain_crypto(record, macro):
                     _dm("MA200 長線多空", long_short, "bool"),
                 ],
             },
+            {
+                "title": "CTA 六策投票矩陣",
+                "items": [
+                    _dm("六策投票", record.get("cta_vote_score"), "text"),
+                    _dm("多頭票數", record.get("cta_vote_long"), "num"),
+                    _dm("空頭票數", record.get("cta_vote_short"), "num"),
+                    _dm("樣本外檢核", record.get("overfit_check"), "text"),
+                ],
+            },
+            {
+                "title": "加密貨幣專屬微觀強化（純現貨）",
+                "items": [
+                    _dm("4H+1D 共振", record.get("mtf_4h_trend"), "text"),
+                    _dm("Taker 主動買盤比", record.get("taker_buy_ratio_5d"), "pct"),
+                    _dm("Taker 情緒", record.get("taker_buy_sentiment"), "text"),
+                    _dm("資金費率", record.get("funding_rate_pct"), "pct"),
+                    _dm("資金費率情緒", record.get("funding_rate_label"), "text"),
+                ],
+            },
         ],
     }
 
@@ -3059,6 +3503,22 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         "amplitude_over_2atr": False,
         "stop_loss_triggered": False,
         "position_plan": None,
+        "cta_vote_score": None,
+        "cta_vote_long": 0,
+        "cta_vote_short": 0,
+        "cta_net": 0,
+        "cta_strategies": [],
+        "taker_buy_ratio_5d": None,
+        "taker_buy_sentiment": None,
+        "mtf_4h_ma20": None,
+        "mtf_4h_rsi": None,
+        "mtf_4h_trend": None,
+        "funding_rate_pct": None,
+        "funding_rate_label": None,
+        "overfit_check": None,
+        "history_gap_count": None,
+        "history_gap_days": None,
+        "defensive_zero_weight": False,
         "backtest_strategy_1y": {
             "win_rate": None,
             "strategy_return_1y": None,
@@ -3135,6 +3595,14 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
 
         latest = ind.iloc[-1]
         rules = DOMAIN_EXIT_RULES.get(category, {})
+
+        # ===== CTA 六大標準策略投票矩陣（技巧 61 & 68~73） =====
+        cta = compute_cta_ensemble(ind)
+        record["cta_vote_score"] = cta["cta_vote_score"]
+        record["cta_vote_long"] = cta["cta_vote_long"]
+        record["cta_vote_short"] = cta["cta_vote_short"]
+        record["cta_net"] = cta["cta_net"]
+        record["cta_strategies"] = cta["cta_strategies"]
 
         # 未還原現價（真實看盤報價）
         raw_close = df_raw["Close"].astype(float).dropna()
@@ -3299,7 +3767,10 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
                 bb_width_pctl = float((bb_width_series <= last_bbw).mean())
         vol_pctl, _ann_vol = _historical_vol_percentile(ind)
         atr_pct = (last_atr / last_close) if (last_atr is not None and last_close) else None
-        record["market_regime"] = classify_market_regime(adx14, bb_width_pctl, vol_pctl, atr_pct)
+        record["market_regime"] = classify_market_regime(
+            adx14, bb_width_pctl, vol_pctl, atr_pct,
+            close=last_close, ma20=last_ma20, ma60=last_ma60,
+        )
 
         ofi_5d_val = to_float(latest.get("ofi_5d"))
         vol_5d_val = to_float(latest.get("vol_5d_sum"))
@@ -3312,8 +3783,27 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
             vwap_bias = (last_close - vwap_20) / vwap_20 * 100.0
         record["vwap_20d_bias"] = round(vwap_bias, 2) if vwap_bias is not None else None
 
+        # ===== 技巧 75、76：樣本外穩健度檢核 =====
+        record["overfit_check"] = compute_overfit_check(record.get("backtest_strategy_1y"))
+
+        # ===== 技巧 87/88：K 線缺口偵測（合併時已自動補齊） =====
+        gap_count, gap_days, _gaps = detect_history_gaps(df_raw, category)
+        record["history_gap_count"] = gap_count
+        record["history_gap_days"] = gap_days
+
+        # ===== 加密貨幣專屬微觀強化（純現貨安全版）：Taker / 4H+1D / 資金費率 =====
+        if category == "Crypto":
+            record["taker_buy_ratio_5d"], record["taker_buy_sentiment"] = compute_taker_buy_sentiment(df_raw)
+            h4 = fetch_binance_klines_4h(symbol)
+            record["mtf_4h_ma20"] = h4.get("ma20_4h") if h4 else None
+            record["mtf_4h_rsi"] = h4.get("rsi_4h") if h4 else None
+            record["mtf_4h_trend"] = compute_mtf_4h_resonance(record, h4)
+            record["funding_rate_pct"], record["funding_rate_label"] = fetch_binance_funding_rate(symbol)
+
         # ===== 三大微觀實戰訊號：遊牧民交減陰線 × 藤本茂6大重點 × 遠藤洋Tenbagger =====
         record.update(compute_nomad_micro_signals(ind, record["price"], is_bar_closed=is_bar_closed))
+        # ===== 破綻3：交減陰線後轉強噴發閘門（與卡片主訊號 100% 一致） =====
+        apply_nomad_gatekeeper(record, ind, is_bar_closed)
         record.update(compute_fujimoto_micro_signals(latest, info, est, record))
         record.update(compute_endo_micro_signals(latest, ind, record, info))
 
@@ -3793,6 +4283,9 @@ def main():
 
     # 市場狀態（高波恐慌盤折半）與跨資產相關性（corr_penalty）風險折減
     apply_risk_adjustments(all_records, macro_overview)
+
+    # ===== 破綻2：減碼/空頭主跌/跌破防守止損 → 新買單建議倉位強制歸零並移轉至 SGOV =====
+    enforce_defensive_zero_weights(all_records)
 
     for r in all_records:
         if r.get("asset_model_type") == "cash_parking_pool":

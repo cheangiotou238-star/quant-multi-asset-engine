@@ -327,6 +327,7 @@ def build_embeds(data):
                 f" 停損 **{fmt_num(it.get('stop_loss_price'), 2)}** 停利 **{fmt_num(it.get('take_profit_price'), 2)}**\n"
                 f"🏛 市場狀態 {it.get('market_regime') or 'N/A'}｜訂單流 {it.get('ofi_direction') or 'N/A'}"
                 f" VWAP20乖離 {fmt_pct_point_signed(it.get('vwap_20d_bias'))}\n"
+                f"🗳 CTA 六策投票 **{it.get('cta_vote_score') or 'N/A'}**｜樣本外 {it.get('overfit_check') or 'N/A'}\n"
                 f"🛡 防守止損 **{fmt_num(it.get('current_defense_sl'), 2)}**｜突破買入 **{fmt_num(it.get('breakout_entry_price'), 2)}**\n"
                 f"🏆 勝率 **{fmt_rate(bt.get('win_rate'))}** 報酬 **{fmt_rate(bt.get('strategy_return_1y'))}**"
                 f" 交易 **{fmt_int(bt.get('trade_count_1y'))}** 次\n"

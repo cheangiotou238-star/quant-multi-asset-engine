@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-11-03T14:11:28+08:00",
+  "mode": "100% 純本金現貨 Spot Cash Only（零槓桿・零借貸・零放空）",
+  "spot_base": "https://api.binance.com/api/v3",
+  "forbidden_endpoints": [
+    "/fapi/",
+    "/dapi/",
+    "/sapi/v1/margin/"
+  ],
+  "time_sync": {
+    "server_ms": 1793686286144,
+    "offset_ms": -355,
+    "status": "🟢 時間同步完成"
+  },
+  "cash_usd": 100000.0,
+  "orders": [
+    {
+      "symbol": "BTC-USD",
+      "pair": "BTCUSDT",
+      "signal": "🔴 減碼 / 停利警戒",
+      "market_regime": "⚖️ 箱型震盪盤",
+      "suggested_weight_pct": 0.0,
+      "cta_vote_score": "3/6 看空",
+      "step_size": "0.00001000",
+      "tick_size": "0.01000000",
+      "min_notional": "10.0",
+      "status": "skipped",
+      "reason": "減碼/空頭主跌/跌破防守止損或建議倉位 0%，禁止新建多單"
+    },
+    {
+      "symbol": "ETH-USD",
+      "pair": "ETHUSDT",
+      "signal": "🔴 減碼 / 停利警戒",
+      "market_regime": "📉 空頭強趨勢主跌段",
+      "suggested_weight_pct": 0.0,
+      "cta_vote_score": "3/6 看空",
+      "step_size": "0.00010000",
+      "tick_size": "0.01000000",
+      "min_notional": "10.0",
+      "status": "skipped",
+      "reason": "減碼/空頭主跌/跌破防守止損或建議倉位 0%，禁止新建多單"
+    },
+    {
+      "symbol": "SOL-USD",
+      "pair": "SOLUSDT",
+      "signal": "🟡 左側超賣試單 (嚴控1/9小倉)",
+      "market_regime": "📉 空頭強趨勢主跌段",
+      "suggested_weight_pct": 0.0,
+      "cta_vote_score": "3/6 看空",
+      "step_size": "0.00100000",
+      "tick_size": "0.01000000",
+      "min_notional": "10.0",
+      "status": "skipped",
+      "reason": "減碼/空頭主跌/跌破防守止損或建議倉位 0%，禁止新建多單"
+    }
+  ]
+}
