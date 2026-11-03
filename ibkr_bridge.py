@@ -14,7 +14,7 @@
 用法：
     python ibkr_bridge.py --dry-run           # 離線模擬純本金委託單計畫（預設）
     python ibkr_bridge.py --check-account     # 唯讀連線查詢 USD/HKD 現金餘額與持倉
-    python ibkr_bridge.py --execute           # 連線 TWS 通過 6 道閘門後實際送括號單
+    python ibkr_bridge.py --execute           # 連線 TWS 通過 10 道閘門後實際送括號單
 """
 
 import argparse
@@ -50,6 +50,12 @@ from config import (
     PREVENT_FX_MARGIN_LOAN,
     MAX_ORDERS_PER_RUN,
     ORDER_THROTTLE_SECONDS,
+    REQUIRE_STRICT_SETTLED_CASH,
+    IBKR_MIN_FEE_BY_CURRENCY,
+    MIN_ORDER_AMOUNT_BY_CURRENCY,
+    MAX_FEE_RATIO_PCT,
+    MAX_SINGLE_ASSET_WEIGHT_PCT,
+    EARNINGS_BLACKOUT_DAYS,
     BLOCKED_LEVERAGED_TICKERS,
     IBKR_DRY_RUN_CASH,
 )
@@ -120,6 +126,33 @@ def _currency_of(symbol):
     return "USD"
 
 
+def _settled_cash(cash_balances, currency):
+    """讀取該幣種已交割現金 SettledCash（dry-run 純數字時即視為該值）。"""
+    entry = cash_balances.get(currency, 0.0) if cash_balances else 0.0
+    if isinstance(entry, dict):
+        return _to_float(entry.get("SettledCash")) or 0.0
+    return _to_float(entry) or 0.0
+
+
+def _cash_balance(cash_balances, currency):
+    """讀取該幣種帳上總餘額 CashBalance（dry-run 純數字時即視為該值）。"""
+    entry = cash_balances.get(currency, 0.0) if cash_balances else 0.0
+    if isinstance(entry, dict):
+        return _to_float(entry.get("CashBalance")) or 0.0
+    return _to_float(entry) or 0.0
+
+
+def _days_until(date_str):
+    """把 'YYYY-MM-DD' 字串轉成距今天數（負值=已過），解析失敗回傳 None。"""
+    if not date_str:
+        return None
+    try:
+        d = datetime.datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+    return (d - datetime.date.today()).days
+
+
 def _is_ibkr_supported(symbol, category):
     """閘門 1：僅處理 IBKR 支援的現貨品種，攔截 Crypto、.TW 台股與槓桿 ETF。"""
     if category in ("Crypto",):
@@ -142,7 +175,7 @@ def _skipped(gate, reason, base):
 
 
 def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
-    """六道實盤防坑檢核閘門。
+    """十道實盤防坑檢核閘門。
 
     回傳 dict：
         status: "approved" / "blocked" / "skipped"
@@ -242,16 +275,20 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
     if stop is None or stop <= 0:
         return _blocked(3, "缺少有效防守止損價 (current_defense_sl)", base)
 
-    settled = _to_float(cash_balances.get(currency)) or 0.0
-    usable = settled * (1.0 - CASH_SAFETY_BUFFER_PCT) if PREVENT_FX_MARGIN_LOAN else settled
+    settled = _settled_cash(cash_balances, currency)
+    cash_balance = _cash_balance(cash_balances, currency)
+    # 可動用本金硬上限 = min(已結算 SettledCash, 帳上總餘額 CashBalance) × (1 - 現金緩衝)
+    usable = min(settled, cash_balance) * (1.0 - CASH_SAFETY_BUFFER_PCT) if PREVENT_FX_MARGIN_LOAN else min(settled, cash_balance)
 
     # 買入總額緩衝 = 手續費 + 極端踩踏滑點
     cost_buffer = 1.0 + COMMISSION_BUFFER_PCT + (slippage / 100.0 if slippage else 0.0)
 
-    # ----- 閘門 4：整數股與港股每手股數對齊 -----
+    # ----- 閘門 4：整數股與港股每手股數對齊（先以帳上總餘額估算建議股數，供閘門 7 抓 T+1 差）-----
     lot = HK_LOT_SIZE if currency == "HKD" else 1
-    max_affordable = int(usable // (entry * cost_buffer))
-    qty = (max_affordable // lot) * lot
+    sizing_cash = cash_balance * (1.0 - CASH_SAFETY_BUFFER_PCT) if PREVENT_FX_MARGIN_LOAN else cash_balance
+    qty = (int(sizing_cash // (entry * cost_buffer)) // lot) * lot
+    needed = qty * entry * cost_buffer
+    order_notional = qty * entry
 
     if qty < 1:
         minimum = entry * cost_buffer * lot
@@ -263,7 +300,43 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
             base,
         )
 
-    needed = qty * entry * cost_buffer
+    # ----- 閘門 9：財報前夕跳空禁買窗 + 單一標的 20% 防跳空上限 -----
+    earnings_date = record.get("earnings_date")
+    if earnings_date:
+        days_to_earnings = _days_until(earnings_date)
+        if days_to_earnings is not None and 0 <= days_to_earnings <= EARNINGS_BLACKOUT_DAYS:
+            return _blocked(
+                9,
+                f"📅 [財報跳空防護] 距離財報公布不足 {EARNINGS_BLACKOUT_DAYS} 天，暫停新建買單",
+                base,
+            )
+
+    cap_applied = False
+    total_capital = cash_balance if cash_balance > 0 else settled
+    cap_notional = total_capital * MAX_SINGLE_ASSET_WEIGHT_PCT
+    if order_notional > cap_notional:
+        max_qty = int(cap_notional // (entry * cost_buffer))
+        qty = (max_qty // lot) * lot
+        if qty < 1:
+            return _blocked(
+                9,
+                f"🛡️ [20% 單一標的防跳空上限] {symbol} 依總本金 20% 上限可買股數不足 1 整股/1 手，暫停",
+                base,
+            )
+        cap_applied = True
+        needed = qty * entry * cost_buffer
+        order_notional = qty * entry
+
+    # ----- 閘門 7：嚴格 SettledCash vs CashBalance 交割時間差防禦 -----
+    if REQUIRE_STRICT_SETTLED_CASH and cash_balance >= needed and settled < needed:
+        return _blocked(
+            7,
+            f"⏳ [T+1 交割時間差攔截] 帳上 {currency} 總餘額雖足夠，但已結算現金 "
+            f"(SettledCash={_fmt_money(settled)}) 不足 {_fmt_money(needed)}！"
+            f"請等待換匯/賣股完成 T+1 交割後隔日再下單，避免產生隱形過夜借貸利息。",
+            base,
+        )
+
     if PREVENT_FX_MARGIN_LOAN and needed > usable:
         return _blocked(
             3,
@@ -273,8 +346,25 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
             base,
         )
 
+    # ----- 閘門 8：單筆最低金額與手續費佔比攔截 -----
+    min_fee = IBKR_MIN_FEE_BY_CURRENCY.get(currency, 0.0)
+    min_amount = MIN_ORDER_AMOUNT_BY_CURRENCY.get(currency, 0.0)
+    est_roundtrip_fee = min_fee * 2.0
+    if currency == "HKD":
+        # 港股額外加計 0.26% 雙邊印花稅與規費
+        est_roundtrip_fee += order_notional * 0.0026
+    fee_pct = (est_roundtrip_fee / order_notional) if order_notional > 0 else 0.0
+    if order_notional < min_amount or fee_pct > MAX_FEE_RATIO_PCT:
+        return _blocked(
+            8,
+            f"💸 [手續費蠶食攔截] 單筆金額 {_fmt_money(order_notional)} {currency} 過小，"
+            f"預估雙邊手續費佔比達 {fee_pct * 100:.2f}% (>0.50% 上限)，拒絕下單以保護本金！",
+            base,
+        )
+
     # ----- 閘門 5：GTC 括號委託單封裝（母限價買單 + 止損子單 + 停利子單）-----
     tp_note = "" if (tp is not None and tp > 0) else "（無目標停利價，僅掛母單+止損）"
+    cap_note = "｜🛡️ 已套用 20% 單一標的防跳空上限" if cap_applied else ""
 
     # ----- 閘門 6：防罰款速率熔斷器（於 build_order_plan 統一計數與封頂）-----
     base.update(
@@ -286,22 +376,46 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
         stop_price=stop,
         tp_price=tp,
         estimated_cost=round(needed, 2),
+        order_notional=round(order_notional, 2),
+        est_roundtrip_fee=round(est_roundtrip_fee, 2),
+        fee_ratio_pct=round(fee_pct * 100, 4),
+        single_asset_capped=cap_applied,
         reason=(
-            f"通過六道閘門：限價買入 {entry} × {qty} 股，"
-            f"估動用 {currency} {_fmt_money(needed)}（≤ 可用 98% = {_fmt_money(usable)}）{tp_note}"
+            f"通過安全閘門：限價買入 {entry} × {qty} 股，"
+            f"估動用 {currency} {_fmt_money(needed)}（≤ 可用 98% = {_fmt_money(usable)}）"
+            f"{tp_note}{cap_note}"
         ),
     )
     return base
 
 
 def build_order_plan(records, cash_balances, positions):
-    """對所有標的跑六道閘門，並於閘門 6 套用單次執行 5 單熔斷上限。"""
+    """對所有標的跑閘門，並於閘門 6 套用單次執行 5 單熔斷上限。
+
+    回傳 (results, anomaly_alerts)：
+        results         逐筆委託單判定結果
+        anomaly_alerts  閘門 10 異常持倉/碎股/負現金巡檢警報清單
+    """
+    anomaly_alerts = audit_portfolio_anomalies(positions, cash_balances)
     results = []
     approved_count = 0
     for record in records:
         result = validate_zero_cost_cash_order(record, cash_balances, positions)
         if result["status"] == "approved":
-            if approved_count >= MAX_ORDERS_PER_RUN:
+            if anomaly_alerts and result.get("action") == "BUY":
+                # 閘門 10：偵測到負持倉/碎股/負現金，凍結所有新買單
+                result.update(
+                    status="blocked",
+                    gate=10,
+                    action=None,
+                    quantity=0,
+                    estimated_cost=0.0,
+                    reason=(
+                        "🚨 [異常持倉凍結] 偵測到負持倉/碎股/負現金，"
+                        "已凍結所有新買單，請先人工處理異常持倉"
+                    ),
+                )
+            elif approved_count >= MAX_ORDERS_PER_RUN:
                 result.update(
                     status="blocked",
                     gate=6,
@@ -316,7 +430,7 @@ def build_order_plan(records, cash_balances, positions):
             else:
                 approved_count += 1
         results.append(result)
-    return results
+    return results, anomaly_alerts
 
 
 def connect_ib(host=None, port=None, client_id=None):
@@ -340,8 +454,9 @@ def connect_ib(host=None, port=None, client_id=None):
 
 
 def read_account_state(ib):
-    """唯讀查詢帳戶各幣種現金餘額（SettledCash 優先）與持倉。"""
-    raw_cash = {"USD": {}, "HKD": {}}
+    """唯讀查詢帳戶各幣種現金餘額（同時抓 SettledCash 與 CashBalance）與持倉。"""
+    raw_cash = {"USD": {"SettledCash": 0.0, "CashBalance": 0.0},
+                "HKD": {"SettledCash": 0.0, "CashBalance": 0.0}}
     try:
         for av in ib.accountValues():
             if av.tag in ("SettledCash", "CashBalance") and av.currency in ("USD", "HKD"):
@@ -351,7 +466,10 @@ def read_account_state(ib):
 
     cash_balances = {}
     for cur in ("USD", "HKD"):
-        cash_balances[cur] = raw_cash[cur].get("SettledCash", raw_cash[cur].get("CashBalance", 0.0))
+        cash_balances[cur] = {
+            "SettledCash": raw_cash[cur].get("SettledCash", 0.0),
+            "CashBalance": raw_cash[cur].get("CashBalance", 0.0),
+        }
 
     positions = {}
     try:
@@ -361,6 +479,46 @@ def read_account_state(ib):
         pass
 
     return cash_balances, positions
+
+
+def audit_portfolio_anomalies(positions, cash_balances):
+    """閘門 10：公司行動／反向拆股「異常負持倉」巡檢器。
+
+    掃描所有持倉數量與各幣種現金餘額：若有任一持倉 position < 0（被動放空）、
+    非整數碎股、或任一幣種 CashBalance < 0（負數透支），輸出最高級別紅色警報。
+    """
+    alerts = []
+    for sym, raw_qty in (positions or {}).items():
+        q = _to_float(raw_qty)
+        if q is None:
+            continue
+        if q < 0:
+            alerts.append({
+                "level": "critical",
+                "type": "negative_position",
+                "symbol": sym,
+                "position": q,
+                "message": f"🚨 偵測到負持倉（被動放空）{sym} = {q:g} 股，立即凍結所有新買單！",
+            })
+        elif q != int(q):
+            alerts.append({
+                "level": "warning",
+                "type": "fractional_position",
+                "symbol": sym,
+                "position": q,
+                "message": f"⚠️ 偵測到非整數碎股 {sym} = {q:g} 股（可能為公司行動/反向拆股殘股），請人工確認。",
+            })
+    for cur in ("USD", "HKD"):
+        cash = _cash_balance(cash_balances, cur)
+        if cash < 0:
+            alerts.append({
+                "level": "critical",
+                "type": "negative_cash",
+                "currency": cur,
+                "cash_balance": cash,
+                "message": f"🚨 偵測到 {cur} 現金餘額為負 ({_fmt_money(cash)})，疑似透支借貸，立即凍結所有新買單！",
+            })
+    return alerts
 
 
 def build_contract(symbol, currency):
@@ -414,9 +572,9 @@ def log_order(result, trades):
 
 
 def run_self_test():
-    """六道閘門自檢演示（僅 console 輸出，不寫入委託單計畫，不實際送單）。"""
+    """十道閘門自檢演示（僅 console 輸出，不寫入委託單計畫，不實際送單）。"""
     print("\n" + "=" * 74)
-    print("🛡️ 六道防坑閘門自檢演示（槓桿攔截 / 跨幣種攔截 / 整數股 / 每手 / 5 單熔斷）")
+    print("🛡️ 十道防坑閘門自檢演示（槓桿/跨幣種/整數股/每手/T+1/手續費/20%上限/財報/負持倉）")
     print("=" * 74)
 
     lev = {
@@ -445,12 +603,46 @@ def run_self_test():
     }
     r = validate_zero_cost_cash_order(us, {"USD": 100_000.0}, {})
     print(f"  [閘門4] 美股整數股計算  AAPL     → qty={r['quantity']} 股, "
-          f"估動用 ${_fmt_money(r['estimated_cost'])}, status={r['status']}")
+          f"估動用 ${_fmt_money(r['estimated_cost'])}, capped={r.get('single_asset_capped')}, status={r['status']}")
 
     hk2 = dict(hk)
-    r = validate_zero_cost_cash_order(hk2, {"USD": 0.0, "HKD": 50_000.0}, {})
+    r = validate_zero_cost_cash_order(hk2, {"USD": 0.0, "HKD": 200_000.0}, {})
     print(f"  [閘門4] 港股每手 100 股對齊 0823.HK → qty={r['quantity']} 股 "
-          f"(每手 {HK_LOT_SIZE}), 估動用 HKD {_fmt_money(r['estimated_cost'])}, status={r['status']}")
+          f"(每手 {HK_LOT_SIZE}), 估動用 HKD {_fmt_money(r['estimated_cost'])}, capped={r.get('single_asset_capped')}, status={r['status']}")
+
+    # 閘門 7：T+1 交割時間差攔截（總餘額足夠但 SettledCash 不足）
+    t1 = dict(us)
+    r = validate_zero_cost_cash_order(
+        t1,
+        {"USD": {"SettledCash": 500.0, "CashBalance": 100_000.0}},
+        {},
+    )
+    print(f"  [閘門7] T+1 未結算現金攔截 AAPL → {r['status']}: {r['reason']}")
+
+    # 閘門 8：手續費蠶食攔截（單筆金額低於最低門檻）
+    small = {
+        "symbol": "SGOV", "name": "超短期國庫券ETF", "category": "Bonds",
+        "price": 50.0, "breakout_entry_price": 50.0, "current_defense_sl": 49.75,
+        "take_profit_price": 51.0, "stress_slippage_pct": 0.0,
+        "signal": "🟡 價值收息買點",
+    }
+    r = validate_zero_cost_cash_order(small, {"USD": 500.0}, {})
+    print(f"  [閘門8] 最低手續費佔比攔截 SGOV → {r['status']}: {r['reason']}")
+
+    # 閘門 9：財報前夕 3 天禁買
+    er = dict(us)
+    er["earnings_date"] = (datetime.date.today() + datetime.timedelta(days=2)).isoformat()
+    r = validate_zero_cost_cash_order(er, {"USD": 100_000.0}, {})
+    print(f"  [閘門9] 財報前夕禁買窗 AAPL → {r['status']}: {r['reason']}")
+
+    # 閘門 10：異常負持倉巡檢
+    anomalies = audit_portfolio_anomalies(
+        {"AAPL": -10.0, "NVDA": 5.5},
+        {"USD": {"SettledCash": 100_000.0, "CashBalance": 100_000.0},
+         "HKD": {"SettledCash": 0.0, "CashBalance": -50.0}},
+    )
+    for a in anomalies:
+        print(f"  [閘門10] 異常持倉巡檢 {a['type']} → {a['message']}")
 
     print(f"  [閘門6] 單次執行上限 MAX_ORDERS_PER_RUN = {MAX_ORDERS_PER_RUN}，"
           f"每單間隔 {ORDER_THROTTLE_SECONDS}s")
@@ -460,7 +652,7 @@ def run_self_test():
 def run_dry_run(records, data, cash_balances=None):
     """離線模擬：不需開啟 TWS，讀 latest_signals.json 產出純本金整數股委託單計畫。"""
     cash = dict(cash_balances or IBKR_DRY_RUN_CASH)
-    results = build_order_plan(records, cash, {})
+    results, anomaly_alerts = build_order_plan(records, cash, {})
 
     approved = [r for r in results if r["status"] == "approved"]
     blocked = [r for r in results if r["status"] == "blocked"]
@@ -471,6 +663,7 @@ def run_dry_run(records, data, cash_balances=None):
         "mode": "dry-run",
         "data_decoupled": IBKR_USE_FREE_EXTERNAL_DATA_ONLY,
         "cash_balances": cash,
+        "portfolio_anomaly_alerts": anomaly_alerts,
         "config": {
             "market_data_type": IBKR_MARKET_DATA_TYPE,
             "strict_cash_only": STRICT_CASH_ONLY,
@@ -480,6 +673,12 @@ def run_dry_run(records, data, cash_balances=None):
             "prevent_fx_margin_loan": PREVENT_FX_MARGIN_LOAN,
             "max_orders_per_run": MAX_ORDERS_PER_RUN,
             "order_throttle_seconds": ORDER_THROTTLE_SECONDS,
+            "require_strict_settled_cash": REQUIRE_STRICT_SETTLED_CASH,
+            "ibkr_min_fee_by_currency": IBKR_MIN_FEE_BY_CURRENCY,
+            "min_order_amount_by_currency": MIN_ORDER_AMOUNT_BY_CURRENCY,
+            "max_fee_ratio_pct": MAX_FEE_RATIO_PCT,
+            "max_single_asset_weight_pct": MAX_SINGLE_ASSET_WEIGHT_PCT,
+            "earnings_blackout_days": EARNINGS_BLACKOUT_DAYS,
         },
         "summary": {
             "total": len(results),
@@ -498,6 +697,10 @@ def run_dry_run(records, data, cash_balances=None):
     print(f"   現金餘額（離線預設）：USD {_fmt_money(cash.get('USD', 0.0))} / "
           f"HKD {_fmt_money(cash.get('HKD', 0.0))}")
     print(f"   結果：通過 {len(approved)} 組｜攔截 {len(blocked)} 組｜略過 {len(skipped)} 組")
+    if anomaly_alerts:
+        print("\n  🚨 [閘門 10 異常持倉巡檢] 偵測到異常，已凍結所有新買單：")
+        for a in anomaly_alerts:
+            print(f"     {a['message']}")
     if approved:
         print("\n  ✅ 通過閘門的委託單（純本金整數股）：")
         for r in approved:
@@ -532,20 +735,29 @@ def check_account(port=None):
         return
     ib.disconnect()
 
+    anomaly_alerts = audit_portfolio_anomalies(positions, cash_balances)
     print("🏦 IBKR 帳戶各幣種現金餘額（唯讀查詢，免費數據模式）")
     for cur in ("USD", "HKD"):
-        print(f"   {cur}: 已結算現金 {_fmt_money(cash_balances.get(cur, 0.0))}")
+        settled = _settled_cash(cash_balances, cur)
+        cash_bal = _cash_balance(cash_balances, cur)
+        print(f"   {cur}: 已結算現金 SettledCash {_fmt_money(settled)} ｜ 總餘額 CashBalance {_fmt_money(cash_bal)}")
     if positions:
         print("\n📦 目前持倉：")
         for sym, qty in positions.items():
             print(f"   {sym}: {qty:,.0f} 股")
     else:
         print("\n📦 目前無持倉")
+    if anomaly_alerts:
+        print("\n🚨 [閘門 10 異常持倉巡檢] 偵測到異常，已凍結所有新買單：")
+        for a in anomaly_alerts:
+            print(f"     {a['message']}")
+    else:
+        print("\n✅ 閘門 10 異常持倉巡檢：無負持倉 / 碎股 / 負現金")
     print("\n✅ 已斷開連線（唯讀查詢，未送出任何委託單）")
 
 
 def execute_orders(port=None):
-    """--execute：連線本地 TWS，通過六道閘門後實際送出 GTC Bracket Orders。"""
+    """--execute：連線本地 TWS，通過十道閘門後實際送出 GTC Bracket Orders。"""
     if not STRICT_CASH_ONLY:
         print("❌ STRICT_CASH_ONLY=False，系統停用（拒絕執行）")
         return
@@ -566,11 +778,15 @@ def execute_orders(port=None):
         ib.disconnect()
         return
 
-    results = build_order_plan(records, cash_balances, positions)
+    results, anomaly_alerts = build_order_plan(records, cash_balances, positions)
+    if anomaly_alerts:
+        print("\n🚨 [閘門 10 異常持倉巡檢] 偵測到異常，已凍結所有新買單：")
+        for a in anomaly_alerts:
+            print(f"     {a['message']}")
     approved = [r for r in results if r["status"] == "approved"]
 
     if not approved:
-        print("⚠️ 沒有通過六道閘門的委託單，不送任何單，直接斷線")
+        print("⚠️ 沒有通過安全閘門的委託單，不送任何單，直接斷線")
         run_self_test()
         ib.disconnect()
         return

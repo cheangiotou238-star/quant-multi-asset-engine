@@ -166,6 +166,23 @@ PREVENT_FX_MARGIN_LOAN = True           # 同幣種現金檢核，嚴禁跨幣�
 MAX_ORDERS_PER_RUN = 5                  # 單次執行最多 5 組委託單（防 Bug 頻繁交易罰款）
 ORDER_THROTTLE_SECONDS = 1.5            # 每筆委託單間強制間隔 1.5 秒
 
+# ===== 四大實盤隱蔽風險安全鎖（第 7~10 道閘門）=====
+# 鎖 1（T+1 已結算現金強制判定）：只認已交割 SettledCash，拒絕動用 T+1/T+2 未結算換匯資金
+REQUIRE_STRICT_SETTLED_CASH = True
+
+# 鎖 2（IBKR 最低手續費與成本佔比門檻）：
+#   美股單邊最低手續費約 1 USD，港股約 18 HKD + 印花稅；低於門檻金額直接攔截不下單
+IBKR_MIN_FEE_BY_CURRENCY = {"USD": 1.0, "HKD": 18.0}
+MIN_ORDER_AMOUNT_BY_CURRENCY = {"USD": 500.0, "HKD": 4000.0}
+# 雙邊預估最低手續費佔交易總額比例嚴格不得超過 0.50%
+MAX_FEE_RATIO_PCT = 0.005
+
+# 鎖 3（防黑天鵝跳空之單一標的最高本金集中度上限）：單一標的 ≤ 總本金 20%
+MAX_SINGLE_ASSET_WEIGHT_PCT = 0.20
+
+# 鎖 4（財報前夕跳空禁買窗）：距離財報公布 0~3 天內禁止新建波段買單
+EARNINGS_BLACKOUT_DAYS = 3
+
 # 槓桿 / 反向 / 高波動 ETN 禁買清單（零槓桿原則，強制攔截）
 BLOCKED_LEVERAGED_TICKERS = {
     "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU",
