@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-03T03:03:53+00:00",
+  "generated_at": "2026-11-03T03:27:06+00:00",
   "summary": {
     "total_assets": 16,
     "signal_counts": {
@@ -21,7 +21,7 @@
   "macro_overview": {
     "us10y_yield": 4.894,
     "us10y_yield_label": "美國 10 年期公債殖利率",
-    "dxy": 101.822,
+    "dxy": 101.832,
     "dxy_label": "美元指數 DXY",
     "vix": 21.15,
     "vix_label": "CBOE 恐慌指數 (VIX)",
@@ -35,31 +35,31 @@
     "evaluated": 80,
     "overall": {
       "avg_mfe_pct": 0.62,
-      "avg_mae_pct": -0.59,
-      "avg_current_return_pct": -0.27,
-      "win_rate_pct": 17.5
+      "avg_mae_pct": -0.6,
+      "avg_current_return_pct": -0.25,
+      "win_rate_pct": 23.75
     },
     "by_symbol": {
       "BTC-USD": {
         "signals": 5,
         "avg_mfe_pct": 0.85,
-        "avg_mae_pct": -0.88,
-        "avg_current_return_pct": -0.84,
+        "avg_mae_pct": -1.01,
+        "avg_current_return_pct": -0.67,
         "win_rate_pct": 0.0
       },
       "ETH-USD": {
         "signals": 5,
         "avg_mfe_pct": 1.53,
-        "avg_mae_pct": -0.39,
-        "avg_current_return_pct": -0.2,
-        "win_rate_pct": 20.0
+        "avg_mae_pct": -0.42,
+        "avg_current_return_pct": -0.14,
+        "win_rate_pct": 40.0
       },
       "SOL-USD": {
         "signals": 5,
         "avg_mfe_pct": 0.61,
-        "avg_mae_pct": -2.35,
-        "avg_current_return_pct": -2.3,
-        "win_rate_pct": 0.0
+        "avg_mae_pct": -2.37,
+        "avg_current_return_pct": -2.11,
+        "win_rate_pct": 20.0
       },
       "NVDA": {
         "signals": 5,
@@ -79,7 +79,7 @@
         "signals": 5,
         "avg_mfe_pct": -0.59,
         "avg_mae_pct": -2.2,
-        "avg_current_return_pct": -1.01,
+        "avg_current_return_pct": -1.18,
         "win_rate_pct": 0.0
       },
       "VNQ": {
@@ -98,10 +98,10 @@
       },
       "0823.HK": {
         "signals": 5,
-        "avg_mfe_pct": 0.31,
+        "avg_mfe_pct": 0.32,
         "avg_mae_pct": -0.73,
-        "avg_current_return_pct": -0.05,
-        "win_rate_pct": 20.0
+        "avg_current_return_pct": 0.11,
+        "win_rate_pct": 80.0
       },
       "TLT": {
         "signals": 5,
@@ -158,8 +158,8 @@
         "date": "2026-10-30",
         "symbol": "BTC-USD",
         "mfe_pct": 1.83,
-        "mae_pct": -0.81,
-        "current_return_pct": -0.75,
+        "mae_pct": -0.97,
+        "current_return_pct": -0.54,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -169,7 +169,7 @@
         "symbol": "ETH-USD",
         "mfe_pct": 3.04,
         "mae_pct": -0.33,
-        "current_return_pct": 0.32,
+        "current_return_pct": 0.39,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -179,7 +179,7 @@
         "symbol": "SOL-USD",
         "mfe_pct": 0.66,
         "mae_pct": -4.76,
-        "current_return_pct": -4.67,
+        "current_return_pct": -4.43,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -209,7 +209,7 @@
         "symbol": "2330.TW",
         "mfe_pct": -1.05,
         "mae_pct": -3.16,
-        "current_return_pct": -1.69,
+        "current_return_pct": -1.9,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -239,7 +239,7 @@
         "symbol": "0823.HK",
         "mfe_pct": 0.45,
         "mae_pct": -0.95,
-        "current_return_pct": -0.1,
+        "current_return_pct": 0.1,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -318,8 +318,8 @@
         "date": "2026-10-31",
         "symbol": "BTC-USD",
         "mfe_pct": 1.52,
-        "mae_pct": -1.12,
-        "current_return_pct": -1.06,
+        "mae_pct": -1.27,
+        "current_return_pct": -0.85,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -328,8 +328,8 @@
         "date": "2026-10-31",
         "symbol": "ETH-USD",
         "mfe_pct": 2.5,
-        "mae_pct": -0.31,
-        "current_return_pct": -0.2,
+        "mae_pct": -0.36,
+        "current_return_pct": -0.13,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -339,7 +339,7 @@
         "symbol": "SOL-USD",
         "mfe_pct": 0.47,
         "mae_pct": -3.89,
-        "current_return_pct": -3.79,
+        "current_return_pct": -3.55,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -369,7 +369,7 @@
         "symbol": "2330.TW",
         "mfe_pct": -1.05,
         "mae_pct": -3.16,
-        "current_return_pct": -1.69,
+        "current_return_pct": -1.9,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -399,7 +399,7 @@
         "symbol": "0823.HK",
         "mfe_pct": 0.45,
         "mae_pct": -0.95,
-        "current_return_pct": -0.1,
+        "current_return_pct": 0.1,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -478,8 +478,8 @@
         "date": "2026-11-01",
         "symbol": "BTC-USD",
         "mfe_pct": 0.46,
-        "mae_pct": -2.15,
-        "current_return_pct": -2.09,
+        "mae_pct": -2.3,
+        "current_return_pct": -1.88,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -488,8 +488,8 @@
         "date": "2026-11-01",
         "symbol": "ETH-USD",
         "mfe_pct": 1.59,
-        "mae_pct": -1.2,
-        "current_return_pct": -1.1,
+        "mae_pct": -1.25,
+        "current_return_pct": -1.02,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -499,7 +499,7 @@
         "symbol": "SOL-USD",
         "mfe_pct": 1.31,
         "mae_pct": -2.98,
-        "current_return_pct": -2.88,
+        "current_return_pct": -2.64,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -529,7 +529,7 @@
         "symbol": "2330.TW",
         "mfe_pct": -1.05,
         "mae_pct": -3.16,
-        "current_return_pct": -1.69,
+        "current_return_pct": -1.9,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -559,7 +559,7 @@
         "symbol": "0823.HK",
         "mfe_pct": 0.45,
         "mae_pct": -0.95,
-        "current_return_pct": -0.1,
+        "current_return_pct": 0.1,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -638,8 +638,8 @@
         "date": "2026-11-02",
         "symbol": "BTC-USD",
         "mfe_pct": 0.45,
-        "mae_pct": -0.34,
-        "current_return_pct": -0.28,
+        "mae_pct": -0.5,
+        "current_return_pct": -0.07,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -648,8 +648,8 @@
         "date": "2026-11-02",
         "symbol": "ETH-USD",
         "mfe_pct": 0.52,
-        "mae_pct": -0.1,
-        "current_return_pct": 0.0,
+        "mae_pct": -0.15,
+        "current_return_pct": 0.07,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -658,8 +658,8 @@
         "date": "2026-11-02",
         "symbol": "SOL-USD",
         "mfe_pct": 0.62,
-        "mae_pct": -0.13,
-        "current_return_pct": -0.16,
+        "mae_pct": -0.21,
+        "current_return_pct": 0.09,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -689,7 +689,7 @@
         "symbol": "2330.TW",
         "mfe_pct": 0.21,
         "mae_pct": -1.5,
-        "current_return_pct": 0.0,
+        "current_return_pct": -0.21,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -717,9 +717,9 @@
       {
         "date": "2026-11-02",
         "symbol": "0823.HK",
-        "mfe_pct": 0.2,
+        "mfe_pct": 0.25,
         "mae_pct": -0.8,
-        "current_return_pct": 0.05,
+        "current_return_pct": 0.25,
         "return_30d_pct": null,
         "return_90d_pct": null,
         "return_180d_pct": null
@@ -973,41 +973,41 @@
         "last_bar_date": "2026-11-03",
         "is_bar_closed": true,
         "bar_close_status": "✅ 已收盤",
-        "price": 76616.3984,
-        "change_pct": -2.09,
-        "ma20": 80498.209,
-        "ma60": 81318.0706,
-        "ma200": 73156.2144,
-        "rsi14": 34.85,
-        "atr14": 1923.8854,
+        "price": 76778.1172,
+        "change_pct": -1.88,
+        "ma20": 80506.2949,
+        "ma60": 81320.7659,
+        "ma200": 73157.023,
+        "rsi14": 35.27,
+        "atr14": 1932.401,
         "high20": 84840.0469,
-        "boll_upper": 84553.8921,
-        "boll_lower": 76442.5259,
-        "ma3": 77433.2005,
-        "ma8": 78669.0303,
-        "ma15": 80090.6448,
-        "ma33": 81843.9545,
-        "ma45": 82407.609,
-        "vol_ratio": 0.9074,
+        "boll_upper": 84529.9096,
+        "boll_lower": 76482.6802,
+        "ma3": 77487.1068,
+        "ma8": 78689.2451,
+        "ma15": 80101.426,
+        "ma33": 81848.8551,
+        "ma45": 82411.2028,
+        "vol_ratio": 0.9575,
         "tenkan_sen": 79039.9141,
         "kijun_sen": 80514.9648,
         "senkou_a": 83048.4492,
         "senkou_b": 75025.4297,
         "ichimoku_cloud": "雲中",
-        "macd": -1271.315321,
-        "macd_signal": -787.75345,
-        "macd_hist": -483.561871,
-        "trailing_stop_price": 80607.4989,
+        "macd": -1258.41468,
+        "macd_signal": -785.173322,
+        "macd_hist": -473.241358,
+        "trailing_stop_price": 80588.7646,
         "trailing_stop_status": "未觸發 (現價低於多頭防線)",
-        "pressure_reversal_price": 80607.4989,
-        "current_defense_sl": 72785.5785,
-        "breakout_entry_price": 80498.209,
-        "breakout_sl": 76650.4381,
+        "pressure_reversal_price": 80588.7646,
+        "current_defense_sl": 72939.2113,
+        "breakout_entry_price": 80506.2949,
+        "breakout_sl": 76641.4928,
         "market_regime": "⚖️ 箱型震盪盤",
-        "ofi_5d": -52504285743.54,
+        "ofi_5d": -35277792604.21,
         "ofi_direction": "🔴 高檔派發倒貨",
-        "vwap_20d_bias": -4.97,
-        "corr_60d": 0.9116,
+        "vwap_20d_bias": -4.76,
+        "corr_60d": 0.9117,
         "corr_penalty": 0.0,
         "sparkline_60d": [
           79671.9688,
@@ -1069,7 +1069,7 @@
           77198.2109,
           77434.75,
           78248.4531,
-          76616.3984
+          76778.1172
         ],
         "backtest_equity_60d": [
           0.949,
@@ -1144,22 +1144,22 @@
         "horizon": "中線空頭",
         "reference_model": "唐奇安突破 + 均線動能（ATR 嚴格止損）",
         "action_reason": "未達突破或動能門檻，暫不追價",
-        "ideal_buy_price": 80498.209,
-        "stop_loss_price": 76650.4381,
-        "take_profit_price": 86269.8653,
+        "ideal_buy_price": 80506.2949,
+        "stop_loss_price": 76641.4928,
+        "take_profit_price": 86303.4981,
         "suggested_weight_pct": 3.22,
-        "volume_status": "量能正常（量比 0.91）",
+        "volume_status": "量能正常（量比 0.96）",
         "exit_rule_desc": "① 持有 ≤ 30 日｜② 停損 -10.0% / -2.0×ATR｜③ 停利 +25.0% / +3.0×ATR｜④ 指標反轉",
-        "ma5": 77454.5844,
-        "ma120": 74486.2742,
-        "ma25": 80958.3953,
+        "ma5": 77486.9281,
+        "ma120": 74487.6218,
+        "ma25": 80964.8641,
         "vol_drop_prev": false,
         "max_vol_10d": 45889366191.0,
-        "max_vol_10d_ratio": 1.79,
+        "max_vol_10d_ratio": 1.78,
         "nomad_signal": null,
-        "nomad_tp_1pct": 77382.56,
-        "nomad_tp_3pct": 78914.89,
-        "nomad_sl_5pct": 72785.58,
+        "nomad_tp_1pct": 77545.9,
+        "nomad_tp_3pct": 79081.46,
+        "nomad_sl_5pct": 72939.21,
         "news_trap_warning": null,
         "weekly_bullish": false,
         "pbr": null,
@@ -1191,10 +1191,10 @@
           }
         ],
         "endo_entry_rule": "⏳ 太早投資NG！等上漲趨勢確立",
-        "ma25_slope": -202.3975,
-        "daily_turnover_val": 1786456573773568.5,
+        "ma25_slope": -195.9288,
+        "daily_turnover_val": 1894179922613921.2,
         "insider_ownership": null,
-        "market_cap": 1540020633600.0,
+        "market_cap": 1544684044288.0,
         "expected_slippage_pct": 0.2,
         "stress_slippage_pct": 0.0,
         "effective_stop_distance_pct": 5.0,
@@ -1281,7 +1281,7 @@
             0.9379
           ]
         },
-        "fast_quote_price": 76582.6796875,
+        "fast_quote_price": 76778.1171875,
         "quote_cross_verified": true,
         "valuation_model": "歷史波動率分位數 + 200日均線乖離率映射",
         "eps_mid": null,
@@ -1293,24 +1293,24 @@
         "target_per": null,
         "per_high_avg": null,
         "per_low_avg": null,
-        "target_price_1": 89248.5087,
-        "upside_1": 0.1649,
-        "target_price_2": 85973.5171,
-        "upside_2": 0.1221,
-        "floor_price": 64749.6313,
-        "downside_risk": -0.1549,
+        "target_price_1": 89303.7434,
+        "upside_1": 0.1631,
+        "target_price_2": 86056.3589,
+        "upside_2": 0.1208,
+        "floor_price": 64879.3498,
+        "downside_risk": -0.155,
         "rule_of_40": null,
         "rule_of_40_met": false,
         "earnings_date": null,
         "check_90d": null,
         "check_180d": null,
         "five_dim_scores": {
-          "growth": 3.96,
-          "profitability": 6.47,
-          "undervaluation": 4.53,
-          "safety": 8.27,
-          "explosive": 5.96,
-          "average": 5.84,
+          "growth": 4.02,
+          "profitability": 6.49,
+          "undervaluation": 4.51,
+          "safety": 8.29,
+          "explosive": 5.95,
+          "average": 5.85,
           "grade": "B級",
           "is_a_plus": false
         },
@@ -1325,27 +1325,27 @@
             "items": [
               {
                 "label": "MA3",
-                "value": 77433.2005,
+                "value": 77487.1068,
                 "kind": "price"
               },
               {
                 "label": "MA8",
-                "value": 78669.0303,
+                "value": 78689.2451,
                 "kind": "price"
               },
               {
                 "label": "MA15",
-                "value": 80090.6448,
+                "value": 80101.426,
                 "kind": "price"
               },
               {
                 "label": "MA120",
-                "value": 74486.2742,
+                "value": 74487.6218,
                 "kind": "price"
               },
               {
                 "label": "量能倍數",
-                "value": 0.9074,
+                "value": 0.9575,
                 "kind": "num"
               },
               {
@@ -1365,17 +1365,17 @@
             "items": [
               {
                 "label": "+1% 停利",
-                "value": 77382.56,
+                "value": 77545.9,
                 "kind": "price"
               },
               {
                 "label": "+3% 停利",
-                "value": 78914.89,
+                "value": 79081.46,
                 "kind": "price"
               },
               {
                 "label": "-5% 鐵律停損",
-                "value": 72785.58,
+                "value": 72939.21,
                 "kind": "price"
               }
             ]
@@ -1415,7 +1415,7 @@
               },
               {
                 "label": "ATR 移動停利",
-                "value": 80607.4989,
+                "value": 80588.7646,
                 "kind": "price"
               },
               {
@@ -1447,41 +1447,41 @@
         "last_bar_date": "2026-11-03",
         "is_bar_closed": true,
         "bar_close_status": "✅ 已收盤",
-        "price": 2248.1299,
-        "change_pct": -1.1,
-        "ma20": 2357.6283,
-        "ma60": 2506.5673,
-        "ma200": 2157.1791,
-        "rsi14": 33.16,
-        "atr14": 76.2683,
+        "price": 2249.76,
+        "change_pct": -1.02,
+        "ma20": 2357.7098,
+        "ma60": 2506.5944,
+        "ma200": 2157.1872,
+        "rsi14": 33.29,
+        "atr14": 76.3539,
         "high20": 2526.0706,
-        "boll_upper": 2503.5415,
-        "boll_lower": 2211.715,
-        "ma3": 2257.9766,
-        "ma8": 2286.2647,
-        "ma15": 2337.7047,
-        "ma33": 2450.2804,
-        "ma45": 2514.5999,
-        "vol_ratio": 0.9742,
+        "boll_upper": 2503.3671,
+        "boll_lower": 2212.0524,
+        "ma3": 2258.52,
+        "ma8": 2286.4685,
+        "ma15": 2337.8134,
+        "ma33": 2450.3298,
+        "ma45": 2514.6361,
+        "vol_ratio": 0.9643,
         "tenkan_sen": 2280.6669,
         "kijun_sen": 2379.3018,
         "senkou_a": 2619.3937,
         "senkou_b": 2338.1235,
         "ichimoku_cloud": "雲下",
-        "macd": -71.004951,
-        "macd_signal": -63.376628,
-        "macd_hist": -7.628322,
-        "trailing_stop_price": 2358.2804,
+        "macd": -70.874912,
+        "macd_signal": -63.350621,
+        "macd_hist": -7.524291,
+        "trailing_stop_price": 2358.092,
         "trailing_stop_status": "未觸發 (現價低於多頭防線)",
-        "pressure_reversal_price": 2358.2804,
-        "current_defense_sl": 2133.7275,
-        "breakout_entry_price": 2357.6283,
-        "breakout_sl": 2205.0917,
+        "pressure_reversal_price": 2358.092,
+        "current_defense_sl": 2135.2292,
+        "breakout_entry_price": 2357.7098,
+        "breakout_sl": 2205.002,
         "market_regime": "🔥 強趨勢推進盤",
-        "ofi_5d": -3855372764.34,
+        "ofi_5d": -143900511.41,
         "ofi_direction": "⚪ 買賣力道均衡",
-        "vwap_20d_bias": -4.7,
-        "corr_60d": 0.9392,
+        "vwap_20d_bias": -4.63,
+        "corr_60d": 0.9393,
         "corr_penalty": 0.0,
         "sparkline_60d": [
           2456.0781,
@@ -1543,7 +1543,7 @@
           2241.0544,
           2252.7478,
           2273.0522,
-          2248.1299
+          2249.76
         ],
         "backtest_equity_60d": [
           0.9906,
@@ -1618,22 +1618,22 @@
         "horizon": "中線空頭",
         "reference_model": "唐奇安突破 + 均線動能（ATR 嚴格止損）",
         "action_reason": "未達突破或動能門檻，暫不追價",
-        "ideal_buy_price": 2357.6283,
-        "stop_loss_price": 2205.0917,
-        "take_profit_price": 2586.4331,
+        "ideal_buy_price": 2357.7098,
+        "stop_loss_price": 2205.002,
+        "take_profit_price": 2586.7714,
         "suggested_weight_pct": 2.39,
-        "volume_status": "量能正常（量比 0.97）",
+        "volume_status": "量能正常（量比 0.96）",
         "exit_rule_desc": "① 持有 ≤ 30 日｜② 停損 -10.0% / -2.0×ATR｜③ 停利 +25.0% / +3.0×ATR｜④ 指標反轉",
-        "ma5": 2252.8965,
-        "ma120": 2264.0251,
-        "ma25": 2384.7125,
+        "ma5": 2253.2226,
+        "ma120": 2264.0387,
+        "ma25": 2384.7778,
         "vol_drop_prev": false,
         "max_vol_10d": 20043298851.0,
         "max_vol_10d_ratio": 1.86,
         "nomad_signal": null,
-        "nomad_tp_1pct": 2270.61,
-        "nomad_tp_3pct": 2315.57,
-        "nomad_sl_5pct": 2135.72,
+        "nomad_tp_1pct": 2272.26,
+        "nomad_tp_3pct": 2317.25,
+        "nomad_sl_5pct": 2137.27,
         "news_trap_warning": null,
         "weekly_bullish": false,
         "pbr": null,
@@ -1665,23 +1665,23 @@
           }
         ],
         "endo_entry_rule": "⏳ 太早投資NG！等上漲趨勢確立",
-        "ma25_slope": -8.9513,
-        "daily_turnover_val": 23642938006136.01,
+        "ma25_slope": -8.8861,
+        "daily_turnover_val": 23406924051087.36,
         "insider_ownership": null,
-        "market_cap": 274725928960.0,
+        "market_cap": 275067338752.0,
         "expected_slippage_pct": 0.2,
         "stress_slippage_pct": 0.0,
-        "effective_stop_distance_pct": 5.0888,
+        "effective_stop_distance_pct": 5.0908,
         "amplitude_over_2atr": false,
         "stop_loss_triggered": false,
         "position_plan": {
           "capital": 100000.0,
           "max_loss_pct": 1.0,
-          "effective_stop_distance_pct": 5.0888,
-          "safe_invest_amount": 19651.07,
+          "effective_stop_distance_pct": 5.0908,
+          "safe_invest_amount": 19643.27,
           "safe_shares": 8,
-          "invest_amount": 18861.03,
-          "max_loss_amount": 959.8
+          "invest_amount": 18861.68,
+          "max_loss_amount": 960.21
         },
         "backtest_strategy_1y": {
           "win_rate": 0.1429,
@@ -1755,7 +1755,7 @@
             0.9237
           ]
         },
-        "fast_quote_price": 2248.1298828125,
+        "fast_quote_price": 2249.760009765625,
         "quote_cross_verified": true,
         "valuation_model": "歷史波動率分位數 + 200日均線乖離率映射",
         "eps_mid": null,
@@ -1767,24 +1767,24 @@
         "target_per": null,
         "per_high_avg": null,
         "per_low_avg": null,
-        "target_price_1": 2520.4478,
-        "upside_1": 0.1211,
-        "target_price_2": 2449.8469,
-        "upside_2": 0.0897,
-        "floor_price": 1998.8787,
-        "downside_risk": -0.1109,
+        "target_price_1": 2521.7029,
+        "upside_1": 0.1209,
+        "target_price_2": 2451.1992,
+        "upside_2": 0.0895,
+        "floor_price": 1999.904,
+        "downside_risk": -0.1111,
         "rule_of_40": null,
         "rule_of_40_met": false,
         "earnings_date": null,
         "check_90d": null,
         "check_180d": null,
         "five_dim_scores": {
-          "growth": 3.74,
-          "profitability": 7.2,
-          "undervaluation": 4.58,
+          "growth": 3.76,
+          "profitability": 7.21,
+          "undervaluation": 4.57,
           "safety": 9.99,
           "explosive": 5.01,
-          "average": 6.1,
+          "average": 6.11,
           "grade": "B+級",
           "is_a_plus": false
         },
@@ -1799,27 +1799,27 @@
             "items": [
               {
                 "label": "MA3",
-                "value": 2257.9766,
+                "value": 2258.52,
                 "kind": "price"
               },
               {
                 "label": "MA8",
-                "value": 2286.2647,
+                "value": 2286.4685,
                 "kind": "price"
               },
               {
                 "label": "MA15",
-                "value": 2337.7047,
+                "value": 2337.8134,
                 "kind": "price"
               },
               {
                 "label": "MA120",
-                "value": 2264.0251,
+                "value": 2264.0387,
                 "kind": "price"
               },
               {
                 "label": "量能倍數",
-                "value": 0.9742,
+                "value": 0.9643,
                 "kind": "num"
               },
               {
@@ -1839,17 +1839,17 @@
             "items": [
               {
                 "label": "+1% 停利",
-                "value": 2270.61,
+                "value": 2272.26,
                 "kind": "price"
               },
               {
                 "label": "+3% 停利",
-                "value": 2315.57,
+                "value": 2317.25,
                 "kind": "price"
               },
               {
                 "label": "-5% 鐵律停損",
-                "value": 2135.72,
+                "value": 2137.27,
                 "kind": "price"
               }
             ]
@@ -1889,7 +1889,7 @@
               },
               {
                 "label": "ATR 移動停利",
-                "value": 2358.2804,
+                "value": 2358.092,
                 "kind": "price"
               },
               {
@@ -1921,40 +1921,40 @@
         "last_bar_date": "2026-11-03",
         "is_bar_closed": true,
         "bar_close_status": "✅ 已收盤",
-        "price": 91.73,
-        "change_pct": -2.88,
-        "ma20": 101.328,
-        "ma60": 107.7026,
-        "ma200": 88.8548,
-        "rsi14": 25.75,
-        "atr14": 3.835,
+        "price": 91.96,
+        "change_pct": -2.64,
+        "ma20": 101.3395,
+        "ma60": 107.7064,
+        "ma200": 88.856,
+        "rsi14": 26.0,
+        "atr14": 3.8404,
         "high20": 109.0304,
-        "boll_upper": 109.9953,
-        "boll_lower": 92.6608,
-        "ma3": 93.8443,
-        "ma8": 97.1954,
-        "ma15": 100.3682,
-        "ma33": 106.5046,
-        "ma45": 109.4983,
-        "vol_ratio": 1.0793,
-        "tenkan_sen": 97.6324,
-        "kijun_sen": 104.2316,
+        "boll_upper": 109.9536,
+        "boll_lower": 92.7255,
+        "ma3": 93.9209,
+        "ma8": 97.2241,
+        "ma15": 100.3835,
+        "ma33": 106.5116,
+        "ma45": 109.5034,
+        "vol_ratio": 1.0796,
+        "tenkan_sen": 97.5947,
+        "kijun_sen": 104.1939,
         "senkou_a": 114.9055,
         "senkou_b": 99.508,
         "ichimoku_cloud": "雲下",
-        "macd": -4.047335,
-        "macd_signal": -3.151381,
-        "macd_hist": -0.895953,
-        "trailing_stop_price": 100.5934,
+        "macd": -4.028987,
+        "macd_signal": -3.147712,
+        "macd_hist": -0.881276,
+        "trailing_stop_price": 100.5816,
         "trailing_stop_status": "未觸發 (現價低於多頭防線)",
-        "pressure_reversal_price": 100.5934,
-        "current_defense_sl": 85.9775,
-        "breakout_entry_price": 101.328,
-        "breakout_sl": 93.658,
+        "pressure_reversal_price": 100.5816,
+        "current_defense_sl": 86.1994,
+        "breakout_entry_price": 101.3395,
+        "breakout_sl": 93.6588,
         "market_regime": "🔥 強趨勢推進盤",
-        "ofi_5d": -8058651881.83,
+        "ofi_5d": -5809849730.07,
         "ofi_direction": "🔴 高檔派發倒貨",
-        "vwap_20d_bias": -9.43,
+        "vwap_20d_bias": -9.2,
         "corr_60d": 0.901,
         "corr_penalty": 0.0,
         "sparkline_60d": [
@@ -2017,7 +2017,7 @@
           96.2188,
           95.3482,
           94.4546,
-          91.73
+          91.96
         ],
         "backtest_equity_60d": [
           0.9365,
@@ -2092,22 +2092,22 @@
         "horizon": "中線空頭",
         "reference_model": "唐奇安突破 + 均線動能（ATR 嚴格止損）",
         "action_reason": "未達突破或動能門檻，暫不追價",
-        "ideal_buy_price": 101.328,
-        "stop_loss_price": 93.658,
-        "take_profit_price": 112.833,
+        "ideal_buy_price": 101.3395,
+        "stop_loss_price": 93.6588,
+        "take_profit_price": 112.8607,
         "suggested_weight_pct": 1.94,
         "volume_status": "量能正常（量比 1.08）",
         "exit_rule_desc": "① 持有 ≤ 30 日｜② 停損 -10.0% / -2.0×ATR｜③ 停利 +25.0% / +3.0×ATR｜④ 指標反轉",
-        "ma5": 94.6491,
-        "ma120": 94.7997,
-        "ma25": 102.7705,
+        "ma5": 94.6951,
+        "ma120": 94.8016,
+        "ma25": 102.7797,
         "vol_drop_prev": false,
         "max_vol_10d": 4882351505.0,
         "max_vol_10d_ratio": 1.91,
-        "nomad_signal": null,
-        "nomad_tp_1pct": 92.65,
-        "nomad_tp_3pct": 94.48,
-        "nomad_sl_5pct": 87.14,
+        "nomad_signal": "🚀 交減陰線後轉強噴發",
+        "nomad_tp_1pct": 92.88,
+        "nomad_tp_3pct": 94.72,
+        "nomad_sl_5pct": 87.36,
         "news_trap_warning": null,
         "weekly_bullish": false,
         "pbr": null,
@@ -2139,23 +2139,23 @@
           }
         ],
         "endo_entry_rule": "⏳ 太早投資NG！等上漲趨勢確立",
-        "ma25_slope": -0.7085,
-        "daily_turnover_val": 253706006228.48,
+        "ma25_slope": -0.6993,
+        "daily_turnover_val": 254409938421.76,
         "insider_ownership": null,
-        "market_cap": 54159597568.0,
+        "market_cap": 54369333248.0,
         "expected_slippage_pct": 0.2,
         "stress_slippage_pct": 0.0,
-        "effective_stop_distance_pct": 6.2711,
+        "effective_stop_distance_pct": 6.2642,
         "amplitude_over_2atr": false,
         "stop_loss_triggered": false,
         "position_plan": {
           "capital": 100000.0,
           "max_loss_pct": 1.0,
-          "effective_stop_distance_pct": 6.2711,
-          "safe_invest_amount": 15946.11,
+          "effective_stop_distance_pct": 6.2642,
+          "safe_invest_amount": 15963.61,
           "safe_shares": 157,
-          "invest_amount": 15908.5,
-          "max_loss_amount": 997.64
+          "invest_amount": 15910.3,
+          "max_loss_amount": 996.66
         },
         "backtest_strategy_1y": {
           "win_rate": 0.2727,
@@ -2229,7 +2229,7 @@
             0.9533
           ]
         },
-        "fast_quote_price": 91.7300033569336,
+        "fast_quote_price": 91.95999908447266,
         "quote_cross_verified": true,
         "valuation_model": "歷史波動率分位數 + 200日均線乖離率映射",
         "eps_mid": null,
@@ -2241,24 +2241,24 @@
         "target_per": null,
         "per_high_avg": null,
         "per_low_avg": null,
-        "target_price_1": 106.4414,
-        "upside_1": 0.1604,
-        "target_price_2": 102.6273,
-        "upside_2": 0.1188,
-        "floor_price": 78.9144,
-        "downside_risk": -0.1397,
+        "target_price_1": 106.5711,
+        "upside_1": 0.1589,
+        "target_price_2": 102.7831,
+        "upside_2": 0.1177,
+        "floor_price": 79.0656,
+        "downside_risk": -0.1402,
         "rule_of_40": null,
         "rule_of_40_met": false,
         "earnings_date": null,
         "check_90d": null,
         "check_180d": null,
         "five_dim_scores": {
-          "growth": 2.9,
-          "profitability": 6.58,
-          "undervaluation": 4.68,
-          "safety": 8.68,
-          "explosive": 5.73,
-          "average": 5.71,
+          "growth": 2.95,
+          "profitability": 6.6,
+          "undervaluation": 4.65,
+          "safety": 8.7,
+          "explosive": 5.72,
+          "average": 5.72,
           "grade": "B級",
           "is_a_plus": false
         },
@@ -2273,27 +2273,27 @@
             "items": [
               {
                 "label": "MA3",
-                "value": 93.8443,
+                "value": 93.9209,
                 "kind": "price"
               },
               {
                 "label": "MA8",
-                "value": 97.1954,
+                "value": 97.2241,
                 "kind": "price"
               },
               {
                 "label": "MA15",
-                "value": 100.3682,
+                "value": 100.3835,
                 "kind": "price"
               },
               {
                 "label": "MA120",
-                "value": 94.7997,
+                "value": 94.8016,
                 "kind": "price"
               },
               {
                 "label": "量能倍數",
-                "value": 1.0793,
+                "value": 1.0796,
                 "kind": "num"
               },
               {
@@ -2303,7 +2303,7 @@
               },
               {
                 "label": "交減陰線訊號",
-                "value": null,
+                "value": "🚀 交減陰線後轉強噴發",
                 "kind": "signal"
               }
             ]
@@ -2313,17 +2313,17 @@
             "items": [
               {
                 "label": "+1% 停利",
-                "value": 92.65,
+                "value": 92.88,
                 "kind": "price"
               },
               {
                 "label": "+3% 停利",
-                "value": 94.48,
+                "value": 94.72,
                 "kind": "price"
               },
               {
                 "label": "-5% 鐵律停損",
-                "value": 87.14,
+                "value": 87.36,
                 "kind": "price"
               }
             ]
@@ -2343,7 +2343,7 @@
               },
               {
                 "label": "共振訊號",
-                "value": "恐慌",
+                "value": "⚪ 中性 → 區間短打",
                 "kind": "signal"
               }
             ]
@@ -2363,7 +2363,7 @@
               },
               {
                 "label": "ATR 移動停利",
-                "value": 100.5934,
+                "value": 100.5816,
                 "kind": "price"
               },
               {
@@ -2562,7 +2562,7 @@
         "position_stage": "0 - 觀望 / 破線停損（cis鐵律：嚴禁攤平）",
         "master_score": 19,
         "dividend_yield": 0.0013682564,
-        "trailing_pe": 25.54488,
+        "trailing_pe": 25.87196,
         "price_to_book": 21.307604,
         "signal": "🔴 減碼 / 停利警戒",
         "horizon": "中線空頭",
@@ -2708,21 +2708,21 @@
         "fast_quote_price": 202.05999755859375,
         "quote_cross_verified": true,
         "valuation_model": "基本面數學估值（Excel 公式）",
-        "eps_mid": 11.9123,
-        "eps_current": 7.91,
+        "eps_mid": 11.8623,
+        "eps_current": 7.81,
         "eps_next": 15.9146,
         "base_per": 15.0,
         "compound_years": 3,
         "profit_growth_rate": 1.278,
         "target_per": 120.0,
-        "per_high_avg": 30.65,
-        "per_low_avg": 20.44,
-        "target_price_1": 365.1579,
-        "upside_1": 0.8072,
-        "target_price_2": 1429.476,
-        "upside_2": 6.0745,
-        "floor_price": 243.4386,
-        "downside_risk": 0.2048,
+        "per_high_avg": 31.05,
+        "per_low_avg": 20.7,
+        "target_price_1": 368.2811,
+        "upside_1": 0.8226,
+        "target_price_2": 1423.476,
+        "upside_2": 6.0448,
+        "floor_price": 245.5208,
+        "downside_risk": 0.2151,
         "rule_of_40": 172.14,
         "rule_of_40_met": true,
         "earnings_date": "2026-08-26",
@@ -2749,17 +2749,17 @@
             "items": [
               {
                 "label": "目標價①",
-                "value": 365.1579,
+                "value": 368.2811,
                 "kind": "price"
               },
               {
                 "label": "目標價②",
-                "value": 1429.476,
+                "value": 1423.476,
                 "kind": "price"
               },
               {
                 "label": "預測低點",
-                "value": 243.4386,
+                "value": 245.5208,
                 "kind": "price"
               },
               {
@@ -3325,40 +3325,40 @@
         "last_bar_date": "2026-11-03",
         "is_bar_closed": false,
         "bar_close_status": "⏳ 盤中即時K線 (未收盤)",
-        "price": 2330.0,
-        "change_pct": 0.0,
-        "ma20": 2448.0,
-        "ma60": 2430.75,
-        "ma200": 2197.1,
-        "rsi14": 33.29,
+        "price": 2325.0,
+        "change_pct": -0.21,
+        "ma20": 2447.75,
+        "ma60": 2430.6667,
+        "ma200": 2197.075,
+        "rsi14": 32.75,
         "atr14": 38.3784,
         "high20": 2590.0,
-        "boll_upper": 2610.9466,
-        "boll_lower": 2285.0534,
-        "ma3": 2343.3333,
-        "ma8": 2380.0,
-        "ma15": 2408.3333,
-        "ma33": 2450.6061,
-        "ma45": 2444.1111,
-        "vol_ratio": 0.4998,
+        "boll_upper": 2611.4723,
+        "boll_lower": 2284.0277,
+        "ma3": 2341.6667,
+        "ma8": 2379.375,
+        "ma15": 2408.0,
+        "ma33": 2450.4545,
+        "ma45": 2444.0,
+        "vol_ratio": 0.6194,
         "tenkan_sen": 2365.0,
         "kijun_sen": 2442.5,
         "senkou_a": 2432.5,
         "senkou_b": 2345.0,
         "ichimoku_cloud": "雲下",
-        "macd": -29.144249,
-        "macd_signal": -15.024169,
-        "macd_hist": -14.12008,
+        "macd": -29.543109,
+        "macd_signal": -15.103941,
+        "macd_hist": -14.439168,
         "trailing_stop_price": 2505.5676,
         "trailing_stop_status": "未觸發 (現價低於多頭防線)",
         "pressure_reversal_price": 2505.5676,
-        "current_defense_sl": 2213.5,
-        "breakout_entry_price": 2448.0,
-        "breakout_sl": 2371.2433,
+        "current_defense_sl": 2208.75,
+        "breakout_entry_price": 2447.75,
+        "breakout_sl": 2370.9933,
         "market_regime": "⚖️ 箱型震盪盤",
-        "ofi_5d": 30889435.5,
+        "ofi_5d": 29404322.5,
         "ofi_direction": "🟢 主力主動吸籌",
-        "vwap_20d_bias": -4.71,
+        "vwap_20d_bias": -4.88,
         "corr_60d": 0.1927,
         "corr_penalty": 0.0,
         "sparkline_60d": [
@@ -3421,7 +3421,7 @@
           2415.0,
           2370.0,
           2330.0,
-          2330.0
+          2325.0
         ],
         "backtest_equity_60d": [
           0.944,
@@ -3490,31 +3490,31 @@
         "position_stage": "0 - 觀望 / 破線停損（cis鐵律：嚴禁攤平）",
         "master_score": 32,
         "dividend_yield": 0.0025751074,
-        "trailing_pe": 24.313889,
-        "price_to_book": 8.578666,
+        "trailing_pe": 24.261713,
+        "price_to_book": 8.560257,
         "signal": "🔴 減碼 / 停利警戒",
         "horizon": "長線多頭",
         "reference_model": "年線趨勢 + MA20 回檔買點（ATR 嚴格止損）",
         "action_reason": "站上年線且均線多頭，回檔至 MA20 可佈局",
-        "ideal_buy_price": 2448.0,
-        "stop_loss_price": 2371.2433,
-        "take_profit_price": 2563.1351,
-        "suggested_weight_pct": 4.91,
-        "volume_status": "量能正常（量比 0.50）",
+        "ideal_buy_price": 2447.75,
+        "stop_loss_price": 2370.9933,
+        "take_profit_price": 2562.8851,
+        "suggested_weight_pct": 4.9,
+        "volume_status": "量能正常（量比 0.62）",
         "exit_rule_desc": "① 持有 ≤ 60 日｜② 停損 -7.0% / -2.0×ATR｜③ 停利 +15.0% / +3.0×ATR｜④ 跌破 MA60 且 MA20<MA60 或 RSI>78",
-        "ma5": 2374.0,
-        "ma120": 2391.5833,
-        "ma25": 2456.0,
+        "ma5": 2373.0,
+        "ma120": 2391.5417,
+        "ma25": 2455.8,
         "vol_drop_prev": false,
         "max_vol_10d": 34382586.0,
         "max_vol_10d_ratio": 1.46,
         "nomad_signal": null,
-        "nomad_tp_1pct": 2353.3,
-        "nomad_tp_3pct": 2399.9,
-        "nomad_sl_5pct": 2213.5,
+        "nomad_tp_1pct": 2348.25,
+        "nomad_tp_3pct": 2394.75,
+        "nomad_sl_5pct": 2208.75,
         "news_trap_warning": null,
         "weekly_bullish": false,
-        "pbr": 8.5787,
+        "pbr": 8.5603,
         "fujimoto_6_checks": 4,
         "fujimoto_checks_detail": [
           {
@@ -3543,10 +3543,10 @@
           }
         ],
         "endo_entry_rule": "⏳ 太早投資NG！等上漲趨勢確立",
-        "ma25_slope": -6.8,
-        "daily_turnover_val": 27358627000.0,
+        "ma25_slope": -7.0,
+        "daily_turnover_val": 34044100800.0,
         "insider_ownership": 0.064,
-        "market_cap": 60422422003712.0,
+        "market_cap": 60292759289856.0,
         "expected_slippage_pct": 0.15,
         "stress_slippage_pct": 0.0,
         "effective_stop_distance_pct": 5.0,
@@ -3558,8 +3558,8 @@
           "effective_stop_distance_pct": 5.0,
           "safe_invest_amount": 20000.0,
           "safe_shares": 8,
-          "invest_amount": 19584.0,
-          "max_loss_amount": 979.2
+          "invest_amount": 19582.0,
+          "max_loss_amount": 979.1
         },
         "backtest_strategy_1y": {
           "win_rate": 0.5,
@@ -3633,7 +3633,7 @@
             1.0058
           ]
         },
-        "fast_quote_price": 2330.0,
+        "fast_quote_price": 2325.0,
         "quote_cross_verified": true,
         "valuation_model": "基本面數學估值（Excel 公式）",
         "eps_mid": 122.5025,
@@ -3646,11 +3646,11 @@
         "per_high_avg": 26.0,
         "per_low_avg": 14.0,
         "target_price_1": 3185.0646,
-        "upside_1": 0.367,
+        "upside_1": 0.3699,
         "target_price_2": 11763.0554,
-        "upside_2": 4.0485,
+        "upside_2": 4.0594,
         "floor_price": 1715.0348,
-        "downside_risk": -0.2639,
+        "downside_risk": -0.2624,
         "rule_of_40": 109.56,
         "rule_of_40_met": true,
         "earnings_date": "2026-07-16",
@@ -3737,7 +3737,7 @@
             "items": [
               {
                 "label": "PBR",
-                "value": 8.578666,
+                "value": 8.560257,
                 "kind": "num"
               },
               {
@@ -3767,7 +3767,7 @@
               },
               {
                 "label": "量能倍數",
-                "value": 0.4998,
+                "value": 0.6194,
                 "kind": "num"
               },
               {
@@ -3955,9 +3955,9 @@
         "near_20d_high_breakout": true,
         "position_stage": "1 - 偵察試單 (1/9 倉位)",
         "master_score": 75,
-        "dividend_yield": 0.03549074,
+        "dividend_yield": 0.038,
         "trailing_pe": 30.085625,
-        "price_to_book": 1.6345128,
+        "price_to_book": null,
         "signal": "⚪ 區間觀望",
         "horizon": "中線空頭",
         "reference_model": "高殖利率 + RSI 超賣均值回歸（ATR 嚴格止損）",
@@ -3980,7 +3980,7 @@
         "nomad_sl_5pct": 90.31,
         "news_trap_warning": null,
         "weekly_bullish": false,
-        "pbr": 1.6345,
+        "pbr": null,
         "fujimoto_6_checks": 3,
         "fujimoto_checks_detail": [
           {
@@ -4102,8 +4102,8 @@
         "fast_quote_price": 95.05999755859375,
         "quote_cross_verified": true,
         "valuation_model": "股息殖利率利差模型 + PBR 淨值折溢價",
-        "yield_spread": -0.0134,
-        "pbr_discount": false,
+        "yield_spread": -0.0109,
+        "pbr_discount": null,
         "eps_mid": null,
         "eps_current": null,
         "eps_next": null,
@@ -4145,7 +4145,7 @@
             "items": [
               {
                 "label": "標的殖利率",
-                "value": 0.03549074,
+                "value": 0.038,
                 "kind": "yield"
               },
               {
@@ -4155,7 +4155,7 @@
               },
               {
                 "label": "利差 (Yield Spread)",
-                "value": -0.0134,
+                "value": -0.0109,
                 "kind": "yield"
               }
             ]
@@ -4165,12 +4165,12 @@
             "items": [
               {
                 "label": "PBR",
-                "value": 1.6345128,
+                "value": null,
                 "kind": "num"
               },
               {
                 "label": "折溢價狀態",
-                "value": "溢價偏高",
+                "value": null,
                 "kind": "text"
               }
             ]
@@ -4623,40 +4623,40 @@
         "last_bar_date": "2026-11-03",
         "is_bar_closed": false,
         "bar_close_status": "⏳ 盤中即時K線 (未收盤)",
-        "price": 39.78,
-        "change_pct": 0.05,
-        "ma20": 38.247,
-        "ma60": 38.2133,
-        "ma200": 37.9412,
-        "rsi14": 66.27,
-        "atr14": 0.6375,
+        "price": 39.86,
+        "change_pct": 0.25,
+        "ma20": 38.251,
+        "ma60": 38.2147,
+        "ma200": 37.9416,
+        "rsi14": 66.86,
+        "atr14": 0.6389,
         "high20": 40.0,
-        "boll_upper": 40.3337,
-        "boll_lower": 36.1603,
-        "ma3": 39.7867,
-        "ma8": 39.325,
-        "ma15": 38.6507,
-        "ma33": 37.8182,
-        "ma45": 37.9409,
-        "vol_ratio": 0.378,
+        "boll_upper": 40.3504,
+        "boll_lower": 36.1516,
+        "ma3": 39.8133,
+        "ma8": 39.335,
+        "ma15": 38.656,
+        "ma33": 37.8206,
+        "ma45": 37.9427,
+        "vol_ratio": 0.4518,
         "tenkan_sen": 38.6,
         "kijun_sen": 38.06,
         "senkou_a": 37.565,
         "senkou_b": 38.1,
         "ichimoku_cloud": "雲上",
-        "macd": 0.550279,
-        "macd_signal": 0.328398,
-        "macd_hist": 0.221881,
-        "trailing_stop_price": 38.5976,
+        "macd": 0.556661,
+        "macd_signal": 0.329674,
+        "macd_hist": 0.226987,
+        "trailing_stop_price": 38.5944,
         "trailing_stop_status": "已站上多頭防線（移動停利生效）",
-        "pressure_reversal_price": 38.5976,
-        "current_defense_sl": 38.1888,
+        "pressure_reversal_price": 38.5944,
+        "current_defense_sl": 38.2656,
         "breakout_entry_price": null,
         "breakout_sl": null,
         "market_regime": "⚖️ 箱型震盪盤",
-        "ofi_5d": 20622256.89,
+        "ofi_5d": 22018099.67,
         "ofi_direction": "🟢 主力主動吸籌",
-        "vwap_20d_bias": 3.62,
+        "vwap_20d_bias": 3.81,
         "corr_60d": -0.0487,
         "corr_penalty": 0.0,
         "sparkline_60d": [
@@ -4719,7 +4719,7 @@
           39.26,
           39.82,
           39.76,
-          39.78
+          39.86
         ],
         "backtest_equity_60d": [
           0.8113,
@@ -4786,33 +4786,33 @@
         "endoh_time_cost_filter": null,
         "near_20d_high_breakout": false,
         "position_stage": "2 - 順勢加碼 (1+2 = 3/9 倉位)",
-        "master_score": 54,
+        "master_score": 58,
         "dividend_yield": 0.0637827,
         "trailing_pe": null,
-        "price_to_book": 0.6887954,
+        "price_to_book": 0.6901806,
         "signal": "🔵 趨勢多頭 / 續抱",
         "horizon": "長線多頭",
         "reference_model": "高殖利率 + RSI 超賣均值回歸（ATR 嚴格止損）",
         "action_reason": "殖利率與動能未達門檻，觀望",
-        "ideal_buy_price": 39.78,
-        "stop_loss_price": 37.7401,
-        "take_profit_price": 41.6924,
+        "ideal_buy_price": 39.86,
+        "stop_loss_price": 37.8155,
+        "take_profit_price": 41.7767,
         "suggested_weight_pct": 5.05,
-        "volume_status": "量能正常（量比 0.38）",
+        "volume_status": "量能正常（量比 0.45）",
         "exit_rule_desc": "① 長期持有（不設天數）｜② 停損 -5.0% / -3.2×ATR｜③ 停利 +10.0% / +3.0×ATR｜④ 收盤跌破 MA200×0.97 或 RSI>78",
-        "ma5": 39.54,
-        "ma120": 38.3857,
-        "ma25": 37.9944,
+        "ma5": 39.556,
+        "ma120": 38.3863,
+        "ma25": 37.9976,
         "vol_drop_prev": true,
         "max_vol_10d": 20456056.0,
         "max_vol_10d_ratio": 2.71,
         "nomad_signal": null,
-        "nomad_tp_1pct": 40.18,
-        "nomad_tp_3pct": 40.97,
-        "nomad_sl_5pct": 37.79,
+        "nomad_tp_1pct": 40.26,
+        "nomad_tp_3pct": 41.06,
+        "nomad_sl_5pct": 37.87,
         "news_trap_warning": null,
         "weekly_bullish": true,
-        "pbr": 0.6888,
+        "pbr": 0.6902,
         "fujimoto_6_checks": 5,
         "fujimoto_checks_detail": [
           {
@@ -4841,10 +4841,10 @@
           }
         ],
         "endo_entry_rule": "🟢 上升模式確立（續抱觀察）",
-        "ma25_slope": 0.1104,
-        "daily_turnover_val": 111104187.48,
+        "ma25_slope": 0.1136,
+        "daily_turnover_val": 133566993.58,
         "insider_ownership": 0.0011,
-        "market_cap": 102990340096.0,
+        "market_cap": 103197466624.0,
         "expected_slippage_pct": 0.15,
         "stress_slippage_pct": 0.0,
         "effective_stop_distance_pct": 4.0,
@@ -4855,9 +4855,9 @@
           "max_loss_pct": 1.0,
           "effective_stop_distance_pct": 4.0,
           "safe_invest_amount": 25000.0,
-          "safe_shares": 628,
-          "invest_amount": 24981.84,
-          "max_loss_amount": 999.27
+          "safe_shares": 627,
+          "invest_amount": 24992.22,
+          "max_loss_amount": 999.69
         },
         "backtest_strategy_1y": {
           "win_rate": 0.25,
@@ -4931,7 +4931,7 @@
             0.7715
           ]
         },
-        "fast_quote_price": 39.779998779296875,
+        "fast_quote_price": 39.86000061035156,
         "quote_cross_verified": true,
         "valuation_model": "股息殖利率利差模型 + PBR 淨值折溢價",
         "yield_spread": 0.0148,
@@ -4945,11 +4945,11 @@
         "target_per": null,
         "per_high_avg": null,
         "per_low_avg": null,
-        "target_price_1": 49.608,
+        "target_price_1": 49.7078,
         "upside_1": 0.2471,
-        "target_price_2": 46.8,
+        "target_price_2": 46.8941,
         "upside_2": 0.1765,
-        "floor_price": 30.6,
+        "floor_price": 30.6615,
         "downside_risk": -0.2308,
         "rule_of_40": null,
         "rule_of_40_met": false,
@@ -4957,12 +4957,12 @@
         "check_90d": null,
         "check_180d": null,
         "five_dim_scores": {
-          "growth": 7.11,
-          "profitability": 6.35,
-          "undervaluation": 4.52,
+          "growth": 7.19,
+          "profitability": 6.36,
+          "undervaluation": 4.49,
           "safety": 8.0,
           "explosive": 6.61,
-          "average": 6.52,
+          "average": 6.53,
           "grade": "B+級",
           "is_a_plus": false
         },
@@ -4997,7 +4997,7 @@
             "items": [
               {
                 "label": "PBR",
-                "value": 0.6887954,
+                "value": 0.6901806,
                 "kind": "num"
               },
               {
@@ -5012,17 +5012,17 @@
             "items": [
               {
                 "label": "合理目標價",
-                "value": 46.8,
+                "value": 46.8941,
                 "kind": "price"
               },
               {
                 "label": "收息地板價",
-                "value": 30.6,
+                "value": 30.6615,
                 "kind": "price"
               },
               {
                 "label": "MA200 乖離率",
-                "value": 4.85,
+                "value": 5.06,
                 "kind": "pct"
               }
             ]
@@ -5629,9 +5629,9 @@
         "near_20d_high_breakout": false,
         "position_stage": "1 - 偵察試單 (1/9 倉位)",
         "master_score": 64,
-        "dividend_yield": 0.010213398,
+        "dividend_yield": 0.0414,
         "trailing_pe": null,
-        "price_to_book": 0.7809966,
+        "price_to_book": null,
         "signal": "⚪ 區間觀望",
         "horizon": "長線空頭",
         "reference_model": "年線趨勢 + 均線多頭（利率循環，ATR 嚴格止損）",
@@ -5654,8 +5654,8 @@
         "nomad_sl_5pct": 86.92,
         "news_trap_warning": null,
         "weekly_bullish": false,
-        "pbr": 0.781,
-        "fujimoto_6_checks": 4,
+        "pbr": null,
+        "fujimoto_6_checks": 3,
         "fujimoto_checks_detail": [
           {
             "label": "營收獲利雙增",
@@ -5667,7 +5667,7 @@
           },
           {
             "label": "估值便宜",
-            "passed": true
+            "passed": false
           },
           {
             "label": "日週K共振",
@@ -6002,7 +6002,7 @@
         "ideal_buy_price": 100.43,
         "stop_loss_price": null,
         "take_profit_price": null,
-        "suggested_weight_pct": 17.64,
+        "suggested_weight_pct": 17.65,
         "volume_status": "現金停泊",
         "exit_rule_desc": "現金停泊（不套用出場法則）",
         "ma5": 100.65,
@@ -6115,7 +6115,7 @@
               },
               {
                 "label": "全市場建議現金停泊比例",
-                "value": 17.64,
+                "value": 17.65,
                 "kind": "pct"
               },
               {
@@ -6303,9 +6303,9 @@
         "near_20d_high_breakout": false,
         "position_stage": "0 - 觀望 / 破線停損（cis鐵律：嚴禁攤平）",
         "master_score": 31,
-        "dividend_yield": 0.00782516,
+        "dividend_yield": 0.0106,
         "trailing_pe": 23.877708,
-        "price_to_book": 1.7687423,
+        "price_to_book": null,
         "signal": "🔴 減碼 / 停利警戒",
         "horizon": "長線多頭",
         "reference_model": "年線趨勢 + 布林中軌順勢（RSI 動能，ATR 嚴格止損）",
@@ -6328,7 +6328,7 @@
         "nomad_sl_5pct": 656.75,
         "news_trap_warning": null,
         "weekly_bullish": false,
-        "pbr": 1.7687,
+        "pbr": null,
         "fujimoto_6_checks": 3,
         "fujimoto_checks_detail": [
           {
@@ -7351,7 +7351,7 @@
             "items": [
               {
                 "label": "美元指數 DXY",
-                "value": 101.822,
+                "value": 101.832,
                 "kind": "num"
               },
               {
@@ -7760,7 +7760,7 @@
             "items": [
               {
                 "label": "美元指數 DXY",
-                "value": 101.822,
+                "value": 101.832,
                 "kind": "num"
               },
               {
