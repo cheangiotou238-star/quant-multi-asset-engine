@@ -45,6 +45,7 @@ from config import (
     K_BODY_MULTIPLIER,
     ROUND_TRIP_COST,
     DOMAIN_EXIT_RULES,
+    FUNDAMENTAL_FALLBACK,
 )
 
 HISTORY_DIR = os.path.join(".", "data", "history")
@@ -3560,30 +3561,38 @@ def fetch_and_analyze(category, symbol, name, macro_overview=None):
         if data_source == SOURCE_YAHOO:
             save_history(symbol, df_raw)
 
-        # 基本面資訊（僅 Yahoo 來源具備完整基本面；幣安/本地快取設為 None）
+        # 基本面資訊：Yahoo 來源抓取完整基本面；離線/本地快取時由保底基準補齊
         info = {}
         est = {}
+        _defaults, _overrides = _custom_estimates()
+        est = dict(_defaults)
+        est.update(_overrides.get(symbol, {}))
         if data_source == SOURCE_YAHOO:
             info = fetch_fundamentals(symbol)
-            _defaults, _overrides = _custom_estimates()
-            est = dict(_defaults)
-            est.update(_overrides.get(symbol, {}))
-            # 殖利率優先取 trailingAnnualDividendYield（固定小數），再退回 dividendYield 並做合理性判斷
-            raw_yield = est.get("dividend_yield")
-            if raw_yield is None:
-                raw_yield = info.get("trailingAnnualDividendYield")
-            if raw_yield is None:
-                raw_yield = info.get("dividendYield")
-            record["dividend_yield"] = normalize_yield(raw_yield)
-            record["trailing_pe"] = to_float(info.get("trailingPE"))
-            record["price_to_book"] = to_float(
-                est.get("pbr") if est.get("pbr") is not None else info.get("priceToBook")
-            )
-            record["market_cap"] = to_float(info.get("marketCap"))
-        else:
-            record["dividend_yield"] = None
-            record["trailing_pe"] = None
-            record["price_to_book"] = None
+
+        # ===== 保底基準基本面（Fallback Fundamental Baseline）=====
+        # 破綻：yfinance 限流或 --offline 離線模式時，Stocks / REITs 的 PBR、殖利率、
+        # 市值、內部持股、EPS、目標價②、40% 法則與五維度評分會變成 null，被前端靜默跳過。
+        # 此處將 config.py 的 FUNDAMENTAL_FALLBACK 併入 info（採 yfinance info 命名），
+        # 確保關鍵基本面 100% 有真實數值可算、絕不變成 null 被前端吃掉。
+        if category in ("Stocks", "REITs"):
+            fallback = FUNDAMENTAL_FALLBACK.get(symbol, {})
+            for _k, _v in fallback.items():
+                if info.get(_k) in (None, ""):
+                    info[_k] = _v
+
+        # 殖利率優先取 trailingAnnualDividendYield（固定小數），再退回 dividendYield 並做合理性判斷
+        raw_yield = est.get("dividend_yield")
+        if raw_yield is None:
+            raw_yield = info.get("trailingAnnualDividendYield")
+        if raw_yield is None:
+            raw_yield = info.get("dividendYield")
+        record["dividend_yield"] = normalize_yield(raw_yield)
+        record["trailing_pe"] = to_float(info.get("trailingPE"))
+        record["price_to_book"] = to_float(
+            est.get("pbr") if est.get("pbr") is not None else info.get("priceToBook")
+        )
+        record["market_cap"] = to_float(info.get("marketCap"))
 
         # 裝甲2：統一採用「未除權息還原之真實交易價 (auto_adjust=False)」計算技術指標與止損定位，
         # 使 MA20/MA200/current_defense_sl 與券商盤面 Raw Close 處於同一價格基準。

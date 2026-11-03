@@ -4,18 +4,23 @@
 > 生成日期：2026-11-03
 > 最高原則：**100% 純本金現貨・零槓桿（Max Leverage = 1.0x）・零數據月費（數據與交易分離）**
 
+> **本次修復（數據契約對齊稽核）**：消除「後端算了指標但前端沒顯示 / 前端吞掉 null 重要指標 / 雲端排程沒更新訂單預覽 JSON / 頂部本金試算器與 IBKR・Binance 委託卡不連動」四大視覺盲點。
+> ① `config.py` 新增 `FUNDAMENTAL_FALLBACK` 保底基準基本面，`quant_engine.py` 於 yfinance 失敗或 `--offline` 離線時自動補齊 Stocks/REITs 的 PBR、殖利率、市值、內部持股、EPS、目標價②、40% 法則與五維度評分，絕不產生 null。
+> ② 前端 `ibkrOrderCardHtml()` / `binanceSpotCardHtml()` 改為直接綁定頂部「總資金本金 / 單筆容忍虧損% / 單利複利 / 歷史已實現損益」即時重算，觀望/減碼訊號顯示「⏸️ 實盤暫不送單」但仍給出純本金預掛單試算（限價、stepSize/tickSize 顆數、動用本金、雙邊手續費%、GTC 止損/停利）。
+> ③ `daily_quant.yml` 於引擎後依序執行 `ibkr_bridge.py --dry-run`、`binance_spot_bridge.py --dry-run`、`notifier.py`，並 `git add` 三個 JSON + `signal_ledger.csv`，確保三檔數據同一時間戳記與價格基準。
+
 ---
 
 ## 1. 後端檔案與各模組職責清單
 
 | 檔案 | 行數 | 職責 |
 |---|---|---|
-| `config.py` | 199 | 六大資產標的池（16 檔）、ATR/MA/唐奇安參數、六大領域出場法則、現金停泊池、IBKR 連線與 10 道安全閘門常數、禁槓桿清單、離線預覽本金 |
+| `config.py` | 275 | 六大資產標的池（16 檔）、ATR/MA/唐奇安參數、六大領域出場法則、現金停泊池、IBKR 連線與 10 道安全閘門常數、禁槓桿清單、離線預覽本金、**保底基準基本面 `FUNDAMENTAL_FALLBACK`（6 檔 Stocks/REITs）** |
 | `quant_engine.py` | 4358 | 核心量化引擎：抓取行情、計算技術指標、六大名家評分、CTA 六策投票、六大資產專屬模型、1 年回測、歷史驗證帳本、產出 `latest_signals.json` |
 | `ibkr_bridge.py` | 902 | IBKR 100% 純本金安全下單橋接器：10 道防坑閘門、原子性 GTC 括號單、`--dry-run`/`--check-account`/`--execute` 三模式 |
 | `binance_spot_bridge.py` | 338 | Binance 純現貨橋接器：鎖死 `/api/v3` 現貨端點、伺服器時間同步（offset_ms）、LOT_SIZE/stepSize/tickSize 無條件捨去精度校準 |
 | `notifier.py` | 393 | Discord Webhook 訊號推播：讀取 `latest_signals.json` 排版六大類別 Embed 報告 |
-| `.github/workflows/daily_quant.yml` | 55 | GitHub Actions 排程（亞洲盤後 16:35 / 美股盤後 21:35 UTC），自動執行引擎與推播並提交數據 |
+| `.github/workflows/daily_quant.yml` | 57 | GitHub Actions 排程（亞洲盤後 16:35 / 美股盤後 21:35 UTC），自動執行引擎 → IBKR/Binance dry-run → notifier → 一併提交三個 JSON + 帳本 |
 | `.htaccess` | — | Apache 安全規則：禁止目錄瀏覽、阻擋 `.git`/`.env`/`.py`/`.md`/`.log`、僅放行 HTML/CSS/JS/JSON/圖片 |
 | `requirements.txt` | 5 | `yfinance`、`pandas`、`numpy`、`requests`、`python-dotenv` |
 
@@ -80,7 +85,7 @@
 ### 2.4 第二層：子分頁膠囊（Sub-Tabs）
 `renderSubTabs()` 於資產類別分頁內產生 `[☷ 同類並排總覽]` + 各標的獨立膠囊按鈕。
 - 並排摘要卡（`compareCardHtml()`）正面**嚴格 8 指標**：現價與漲跌、主訊號、市場狀態、五師評分、CTA 六策投票、現價防守止損、目標停利、含滑點安全倉位。
-- 深潛視圖（`deepCardHtml()`）：SVG 水平價格攻防比例尺、60 日走勢 + 回測淨值、CTA 6 子策略燈號、資產專屬 domain_metrics、IBKR / Binance 委託預覽卡。
+- 深潛視圖（`deepCardHtml()`）：SVG 水平價格攻防比例尺、60 日走勢 + 回測淨值、CTA 6 子策略燈號、資產專屬 domain_metrics、IBKR / Binance 委託預覽卡（**即時連動頂部本金試算器動態重算**）。
 
 ### 2.5 視覺組件清單
 | 函式 | 用途 |
@@ -90,8 +95,8 @@
 | `gaugeSVG()` | 水平價格攻防比例尺（預測低點/防守止損/現價/突破買入/目標停利/R/R 比） |
 | `ctaLightsHtml()` | CTA 六策燈號矩陣 |
 | `domainSectionsHtml()` | 專屬 domain_metrics（嚴格過濾 null） |
-| `ibkrOrderCardHtml()` | IBKR GTC 括號單預覽（含閘門 1/8/9 攔截） |
-| `binanceSpotCardHtml()` | Binance 純現貨精度校正預覽 |
+| `ibkrOrderCardHtml()` | IBKR GTC 括號單預覽：綁定 `effectiveCapital()` 即時重算，觀望/減碼顯示「⏸️ 實盤暫不送單」+ 純本金預掛單試算（含閘門 1/8/9 攔截） |
+| `binanceSpotCardHtml()` | Binance 純現貨預覽：綁定 `effectiveCapital()` 即時重算，`stepSize`/`tickSize`/`minNotional` 精度校正 + 20% 上限裁剪 |
 | `overviewHtml()` | 戰情總覽（現金池 + Top3 + 可排序總表） |
 | `ledgerTableHtml()` | 歷史驗證帳本雙層表格 |
 
@@ -285,6 +290,8 @@ public/data/latest_signals.json ◄── data/signal_ledger.csv (歷史驗證)
 | five_dim_scores | obj | growth / profitability / undervaluation / safety / explosive / average / grade / is_a_plus |
 | asset_model_type | str | 六大資產專屬模型 |
 | domain_metrics | array | [ { title, items: [ {label, value, kind} ] } ] |
+
+> **數據契約（非 null 保證）**：Stocks（NVDA/AAPL/2330.TW）與 REITs（VNQ/O/0823.HK）的 `pbr`、`dividend_yield`、`target_price_2`、`floor_price`、`five_dim_scores` 一律非 null；yfinance 失敗或 `--offline` 離線時由 `config.FUNDAMENTAL_FALLBACK` 保底基準補齊。REITs 的 `eps_current/eps_next/rule_of_40/yield_spread` 依模型定義可為 null（REITs 採殖利率利差模型，無 EPS/40% 法則），前端已完整映射為繁體中文標籤與正確單位，不會印出英文 raw key。
 
 ### 5.5 `public/data/ibkr_order_plan.json`
 | 欄位 | 說明 |

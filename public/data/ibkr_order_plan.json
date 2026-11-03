@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-03T12:59:21+08:00",
+  "generated_at": "2026-11-03T19:53:23+08:00",
   "mode": "dry-run",
   "data_decoupled": true,
   "cash_balances": {
@@ -42,15 +42,16 @@
       "category": "Crypto",
       "currency": "USD",
       "signal": "🔴 減碼 / 停利警戒",
-      "limit_price": 80506.2949,
-      "stop_price": 72939.2113,
-      "tp_price": 86303.4981,
+      "limit_price": 80392.543,
+      "stop_price": 73300.1,
+      "tp_price": 86081.6384,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "skipped",
       "gate": 1,
       "reason": "Crypto 非 IBKR 現貨標的（幣圈由 Binance 執行），跳過",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "ETH-USD",
@@ -58,31 +59,33 @@
       "category": "Crypto",
       "currency": "USD",
       "signal": "🔴 減碼 / 停利警戒",
-      "limit_price": 2357.7098,
-      "stop_price": 2135.2292,
-      "tp_price": 2586.7714,
+      "limit_price": 2353.009,
+      "stop_price": 2148.6986,
+      "tp_price": 2590.6317,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "skipped",
       "gate": 1,
       "reason": "Crypto 非 IBKR 現貨標的（幣圈由 Binance 執行），跳過",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "SOL-USD",
       "name": "Solana (SOL)",
       "category": "Crypto",
       "currency": "USD",
-      "signal": "🔴 減碼 / 停利警戒",
-      "limit_price": 101.3395,
-      "stop_price": 86.1994,
-      "tp_price": 112.8607,
+      "signal": "🟡 左側超賣試單 (嚴控1/9小倉)",
+      "limit_price": 100.882,
+      "stop_price": 86.2745,
+      "tp_price": 113.313,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "skipped",
       "gate": 1,
       "reason": "Crypto 非 IBKR 現貨標的（幣圈由 Binance 執行），跳過",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "NVDA",
@@ -98,7 +101,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「🔴 減碼 / 停利警戒」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "AAPL",
@@ -114,7 +118,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「🔴 減碼 / 停利警戒」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "2330.TW",
@@ -122,15 +127,16 @@
       "category": "Stocks",
       "currency": "USD",
       "signal": "🔴 減碼 / 停利警戒",
-      "limit_price": 2447.75,
-      "stop_price": 2208.75,
-      "tp_price": 2562.8851,
+      "limit_price": 2446.25,
+      "stop_price": 2180.25,
+      "tp_price": 2564.5994,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "skipped",
       "gate": 1,
       "reason": ".TW 台股非 IBKR 現貨標的，跳過",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "VNQ",
@@ -146,7 +152,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「⚪ 區間觀望」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "O",
@@ -162,7 +169,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「⚪ 區間觀望」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "0823.HK",
@@ -170,15 +178,16 @@
       "category": "REITs",
       "currency": "HKD",
       "signal": "🔵 趨勢多頭 / 續抱",
-      "limit_price": 39.86,
-      "stop_price": 38.2656,
-      "tp_price": 41.7767,
+      "limit_price": 39.98,
+      "stop_price": 38.3808,
+      "tp_price": 41.9267,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "blocked",
       "gate": 3,
-      "reason": "🚫 [防外匯借貸攔截] 0823.HK 需要 3,989.99 HKD，但帳上已結算 HKD 現金僅 0.00，請先在 IBKR 手動換匯 (FX Conversion)，禁止自動借貸計息！",
-      "action": null
+      "reason": "🚫 [防外匯借貸攔截] 0823.HK 需要 4,002.00 HKD，但帳上已結算 HKD 現金僅 0.00，請先在 IBKR 手動換匯 (FX Conversion)，禁止自動借貸計息！",
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "TLT",
@@ -194,7 +203,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「⚪ 區間觀望」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "IEF",
@@ -210,7 +220,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「⚪ 區間觀望」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "SGOV",
@@ -226,7 +237,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「💵 現金停泊資金池」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "VOO",
@@ -242,7 +254,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「🔴 減碼 / 停利警戒」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "QQQ",
@@ -258,7 +271,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「🔴 減碼 / 停利警戒」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "GLD",
@@ -274,7 +288,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「⚪ 區間觀望 / 等待突破」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     },
     {
       "symbol": "IAU",
@@ -290,7 +305,8 @@
       "status": "skipped",
       "gate": 2,
       "reason": "主訊號「⚪ 區間觀望 / 等待突破」非明確看多/試單，不產生買單",
-      "action": null
+      "action": null,
+      "earnings_note": ""
     }
   ]
 }

@@ -35,18 +35,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run quant engine and notifier
+      - name: Run quant engine, order bridges and notifier
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python quant_engine.py
+          python ibkr_bridge.py --dry-run
+          python binance_spot_bridge.py --dry-run
           python notifier.py
 
       - name: Commit and push updated data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/history/*.csv data/signal_ledger.csv public/data/latest_signals.json index.html
+          git add data/history/*.csv data/signal_ledger.csv public/data/latest_signals.json public/data/ibkr_order_plan.json public/data/binance_spot_plan.json index.html public/index.html
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
