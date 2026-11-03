@@ -134,3 +134,49 @@ DOMAIN_EXIT_RULES = {
 # 💵 現金停泊資金池（不套用一般股票均線減碼訊號）
 CASH_PARKING_SYMBOLS = {"SGOV"}
 CASH_PARKING_LABEL = "💵 現金停泊資金池"
+
+# =====================================================================
+# $0 零月費・數據與交易分離 (Data-Execution Decoupling) 五大防坑護欄
+# ---------------------------------------------------------------------
+# 核心原則 1（$0 零月費）：行情、技術指標、基本面估值與歷史 K 線 100% 由
+#   免費的 quant_engine.py（Yahoo Finance / Binance）產出；ibkr_bridge.py
+#   僅按需連線 IB Gateway / TWS 免費查詢現金餘額並送單，送完即斷開。
+# 核心原則 2（100% 純本金）：嚴禁融資、放空與跨幣種自動借貸計息。
+# =====================================================================
+
+# IBKR 本地連線資訊（預設模擬倉 Paper 7497，實盤改為 7496）
+IBKR_HOST = "127.0.0.1"
+IBKR_PORT_PAPER = 7497
+IBKR_PORT_LIVE = 7496
+IBKR_CLIENT_ID = 108
+
+# 強制使用免費延遲/凍結數據：3 = Free Delayed Data、4 = Frozen Data。
+# 確保未付費訂閱時永不觸發 Error 10089，也不產生任何數據月費。
+IBKR_MARKET_DATA_TYPE = 3
+
+# 禁止向 IBKR 請求歷史 K 線，100% 避開 Error 165 Pacing Violation 與月費
+IBKR_USE_FREE_EXTERNAL_DATA_ONLY = True
+
+# ===== 純本金與防罰款熔斷常數 =====
+STRICT_CASH_ONLY = True                 # 主開關：強制 100% 純本金
+MAX_LEVERAGE_RATIO = 1.0                # 槓桿上限 = 1.0（零槓桿）
+CASH_SAFETY_BUFFER_PCT = 0.02           # 保留 2% 同幣種現金緩衝，最多動用 98% 已結算現金
+ALLOW_SHORT_SELLING = False             # 禁止放空
+PREVENT_FX_MARGIN_LOAN = True           # 同幣種現金檢核，嚴禁跨幣種借貸計息
+MAX_ORDERS_PER_RUN = 5                  # 單次執行最多 5 組委託單（防 Bug 頻繁交易罰款）
+ORDER_THROTTLE_SECONDS = 1.5            # 每筆委託單間強制間隔 1.5 秒
+
+# 槓桿 / 反向 / 高波動 ETN 禁買清單（零槓桿原則，強制攔截）
+BLOCKED_LEVERAGED_TICKERS = {
+    "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU",
+    "UVXY", "SVXY", "BOIL", "KOLD", "LABU", "LABD",
+    "BITX", "CONL", "NVDL",
+}
+
+# 離線預覽模式（--dry-run）使用的預設幣種本金：
+# 實盤連線時一律以 IBKR accountValues() 的真實已結算現金為準。
+# HKD 預設 0，目的在示範「防跨幣種融資借貸鎖」：買 HKD 標的需先手動換匯。
+IBKR_DRY_RUN_CASH = {
+    "USD": 100_000.0,
+    "HKD": 0.0,
+}

@@ -11,6 +11,9 @@ venv/
 *log.txt
 done.txt
 
+# IBKR 下單橋接器本地送單日誌（含個人帳戶資訊，嚴禁外洩至公開 GitHub）
+ibkr_order_log.txt
+
 # 注意：以下檔案必須納入版控，供 GitHub Actions 雲端更新與 Hostinger 讀取
 # 不忽略 data/history/*.csv 與 public/data/latest_signals.json
 !data/history/*.csv
