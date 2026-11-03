@@ -63,6 +63,7 @@ from config import (
 SIGNALS_FILE = os.path.join(".", "public", "data", "latest_signals.json")
 ORDER_PLAN_FILE = os.path.join(".", "public", "data", "ibkr_order_plan.json")
 ORDER_LOG_FILE = os.path.join(".", "ibkr_order_log.txt")
+CUSTOM_ESTIMATES_PATH = os.path.join(".", "data", "custom_estimates.json")
 
 # 明確看多 / 試單主訊號（對應 quant_engine.py 的訊號定義，訊號過濾閘門用）
 BULLISH_SIGNALS = {
@@ -78,6 +79,13 @@ HK_LOT_SIZE = 100
 
 # 每筆委託單的手續費成本緩衝（0.1%），與訊號 stress_slippage_pct 相加後計入買入總額
 COMMISSION_BUFFER_PCT = 0.001
+
+# 港股股票印花稅（雙邊 0.26%）：REITs（如 0823.HK 領展房產基金）香港交易所免徵，
+# 僅計 IBKR 最低手續費與基本規費，不加計此印花稅。
+HK_STAMP_DUTY_RATE = 0.0026
+
+# .HK 標的抓不到固定季報日時，於訂單預覽標註的提醒文案
+HK_NO_EARNINGS_DATE_NOTE = "ℹ️ 港股無固定季報日，請留意董事會公告"
 
 
 def _to_float(value):
@@ -153,6 +161,32 @@ def _days_until(date_str):
     return (d - datetime.date.today()).days
 
 
+_CUSTOM_EARNINGS_CACHE = None
+
+
+def _custom_earnings_date(symbol):
+    """從 data/custom_estimates.json 的 overrides 讀取自訂財報日（快取，避免逐筆重讀）。"""
+    global _CUSTOM_EARNINGS_CACHE
+    if _CUSTOM_EARNINGS_CACHE is None:
+        _CUSTOM_EARNINGS_CACHE = {}
+        if os.path.exists(CUSTOM_ESTIMATES_PATH):
+            try:
+                with open(CUSTOM_ESTIMATES_PATH, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                _CUSTOM_EARNINGS_CACHE = payload.get("overrides") or {}
+            except Exception:
+                _CUSTOM_EARNINGS_CACHE = {}
+    candidates = [symbol]
+    if symbol.endswith(".HK"):
+        candidates.append(symbol[:-3])
+    for key in candidates:
+        override = _CUSTOM_EARNINGS_CACHE.get(key) or {}
+        ed = override.get("earnings_date")
+        if ed:
+            return ed
+    return None
+
+
 def _is_ibkr_supported(symbol, category):
     """閘門 1：僅處理 IBKR 支援的現貨品種，攔截 Crypto、.TW 台股與槓桿 ETF。"""
     if category in ("Crypto",):
@@ -220,6 +254,7 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
         "gate": 0,
         "reason": "",
         "action": None,
+        "earnings_note": "",
     }
 
     # ----- 閘門 1：品種與禁槓桿檢查 -----
@@ -302,6 +337,12 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
 
     # ----- 閘門 9：財報前夕跳空禁買窗 + 單一標的 20% 防跳空上限 -----
     earnings_date = record.get("earnings_date")
+    if not earnings_date and symbol.endswith(".HK"):
+        # 港股無固定季報日：優先讀取 custom_estimates.json 自訂財報日，
+        # 若仍無則放行並於訂單預覽標註提醒，不做財報跳空攔截
+        earnings_date = _custom_earnings_date(symbol)
+        if not earnings_date:
+            base["earnings_note"] = HK_NO_EARNINGS_DATE_NOTE
     if earnings_date:
         days_to_earnings = _days_until(earnings_date)
         if days_to_earnings is not None and 0 <= days_to_earnings <= EARNINGS_BLACKOUT_DAYS:
@@ -350,9 +391,10 @@ def validate_zero_cost_cash_order(record, cash_balances=None, positions=None):
     min_fee = IBKR_MIN_FEE_BY_CURRENCY.get(currency, 0.0)
     min_amount = MIN_ORDER_AMOUNT_BY_CURRENCY.get(currency, 0.0)
     est_roundtrip_fee = min_fee * 2.0
-    if currency == "HKD":
-        # 港股額外加計 0.26% 雙邊印花稅與規費
-        est_roundtrip_fee += order_notional * 0.0026
+    if currency == "HKD" and category != "REITs":
+        # 港股股票加計 0.26% 雙邊股票印花稅與規費；
+        # REITs（如 0823.HK 領展房產基金）香港交易所免徵，僅計 IBKR 最低手續費與基本規費
+        est_roundtrip_fee += order_notional * HK_STAMP_DUTY_RATE
     fee_pct = (est_roundtrip_fee / order_notional) if order_notional > 0 else 0.0
     if order_notional < min_amount or fee_pct > MAX_FEE_RATIO_PCT:
         return _blocked(
@@ -532,6 +574,8 @@ def place_bracket_order(ib, contract, qty, entry, stop, tp):
     """閘門 5：GTC 括號委託單（母限價買單 + 止損子單 + 停利子單）。
 
     三張單皆為伺服器端 GTC 單，送單後即可關閉 TWS，不怕每週斷線或手機互踢。
+    母單與停利子單 transmit=False，僅最後一張止損子單 transmit=True，
+    確保三張單原子性一併向交易所廣播，杜絕斷網產生裸單。
     """
     parent = LimitOrder("BUY", qty, entry, tif="GTC")
     parent.transmit = False
@@ -539,17 +583,18 @@ def place_bracket_order(ib, contract, qty, entry, stop, tp):
     parent_id = trade_parent.order.orderId
 
     has_tp = tp is not None and tp > 0
-    stop_order = StopOrder("SELL", qty, stop, tif="GTC")
-    stop_order.parentId = parent_id
-    stop_order.transmit = not has_tp
-    trade_stop = ib.placeOrder(contract, stop_order)
 
     trade_tp = None
     if has_tp:
         tp_order = LimitOrder("SELL", qty, tp, tif="GTC")
         tp_order.parentId = parent_id
-        tp_order.transmit = True
+        tp_order.transmit = False
         trade_tp = ib.placeOrder(contract, tp_order)
+
+    stop_order = StopOrder("SELL", qty, stop, tif="GTC")
+    stop_order.parentId = parent_id
+    stop_order.transmit = True
+    trade_stop = ib.placeOrder(contract, stop_order)
 
     return [trade_parent, trade_stop, trade_tp]
 
@@ -704,9 +749,12 @@ def run_dry_run(records, data, cash_balances=None):
     if approved:
         print("\n  ✅ 通過閘門的委託單（純本金整數股）：")
         for r in approved:
-            print(f"     {r['action']} {r['symbol']:<10} {r['currency']} × {r['quantity']:>6} 股 "
-                  f"@ LMT {_fmt_money(r['limit_price'])}｜STP {_fmt_money(r['stop_price'])}｜"
-                  f"TP {_fmt_money(r['tp_price'])}｜估動用 {_fmt_money(r['estimated_cost'])}")
+            line = (f"     {r['action']} {r['symbol']:<10} {r['currency']} × {r['quantity']:>6} 股 "
+                    f"@ LMT {_fmt_money(r['limit_price'])}｜STP {_fmt_money(r['stop_price'])}｜"
+                    f"TP {_fmt_money(r['tp_price'])}｜估動用 {_fmt_money(r['estimated_cost'])}")
+            if r.get("earnings_note"):
+                line += f"｜{r['earnings_note']}"
+            print(line)
     if blocked:
         print("\n  🚫 被防坑閘門攔截：")
         for r in blocked:
