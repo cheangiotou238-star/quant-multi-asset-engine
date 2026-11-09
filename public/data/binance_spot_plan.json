@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-07T01:09:40+00:00",
+  "generated_at": "2026-11-09T19:05:09+00:00",
   "mode": "100% 純本金現貨 Spot Cash Only（零槓桿・零借貸・零放空）",
   "spot_base": "https://api.binance.com/api/v3",
   "forbidden_endpoints": [
@@ -30,10 +30,10 @@
     {
       "symbol": "ETH-USD",
       "pair": "ETHUSDT",
-      "signal": "🔴 減碼 / 停利警戒",
-      "market_regime": "📉 空頭強趨勢主跌段",
+      "signal": "⚪ 區間觀望 / 等待突破",
+      "market_regime": "⚖️ 箱型震盪盤",
       "suggested_weight_pct": 0.0,
-      "cta_vote_score": "2/6 看空",
+      "cta_vote_score": "3/6 看空",
       "step_size": "0.0001",
       "tick_size": "0.01",
       "min_notional": "10.0",
@@ -43,7 +43,7 @@
     {
       "symbol": "SOL-USD",
       "pair": "SOLUSDT",
-      "signal": "⚪ 區間觀望 / 等待突破",
+      "signal": "🔴 減碼 / 停利警戒",
       "market_regime": "📉 空頭強趨勢主跌段",
       "suggested_weight_pct": 0.0,
       "cta_vote_score": "3/6 看空",
