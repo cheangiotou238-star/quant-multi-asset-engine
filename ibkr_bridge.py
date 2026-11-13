@@ -65,13 +65,11 @@ ORDER_PLAN_FILE = os.path.join(".", "public", "data", "ibkr_order_plan.json")
 ORDER_LOG_FILE = os.path.join(".", "ibkr_order_log.txt")
 CUSTOM_ESTIMATES_PATH = os.path.join(".", "data", "custom_estimates.json")
 
-# 明確看多 / 試單主訊號（對應 quant_engine.py 的訊號定義，訊號過濾閘門用）
+# 明確看多 / 試單主訊號（對應 quant_engine.py 四大正統策略的看多訊號，訊號過濾閘門用）
 BULLISH_SIGNALS = {
-    "🟢 強烈買進 / 低檔加碼",
-    "🔵 趨勢多頭 / 續抱",
-    "🟡 價值收息買點",
-    "🔥 爆量長紅突破 (強勢買進)",
-    "🟡 左側超賣試單 (嚴控1/9小倉)",
+    "🟢 遠藤洋趨勢買進",
+    "🟢 收息配置買進",
+    "🟢 雙動能配置買進",
 }
 
 # 港股每手股數（預設 100 股）
@@ -116,7 +114,7 @@ def load_signals():
 def iter_assets(data):
     """把 latest_signals.json 的 assets 字典攤平成單一記錄清單。"""
     assets = data.get("assets") or {}
-    known = ("Crypto", "Stocks", "REITs", "Bonds", "ETFs", "Gold")
+    known = ("Stocks", "Crypto", "Income", "Macro")
     for category in known:
         for record in assets.get(category) or []:
             yield record
@@ -626,7 +624,7 @@ def run_self_test():
         "symbol": "TQQQ", "name": "ProShares UltraPro QQQ (3x)", "category": "ETFs",
         "price": 70.0, "breakout_entry_price": 70.0, "current_defense_sl": 66.0,
         "take_profit_price": 80.0, "stress_slippage_pct": 0.0,
-        "signal": "🟢 強烈買進 / 低檔加碼",
+        "signal": "🟢 雙動能配置買進",
     }
     r = validate_zero_cost_cash_order(lev, {"USD": 100_000.0}, {})
     print(f"  [閘門1] 槓桿 ETF 攔截  TQQQ      → {r['status']}: {r['reason']}")
@@ -635,7 +633,7 @@ def run_self_test():
         "symbol": "0823.HK", "name": "領展房產基金", "category": "REITs",
         "price": 36.0, "breakout_entry_price": 36.0, "current_defense_sl": 34.0,
         "take_profit_price": 40.0, "stress_slippage_pct": 0.0,
-        "signal": "🔵 趨勢多頭 / 續抱",
+        "signal": "🟢 收息配置買進",
     }
     r = validate_zero_cost_cash_order(hk, {"USD": 100_000.0, "HKD": 0.0}, {})
     print(f"  [閘門3] 跨幣種現金不足攔截 0823.HK → {r['status']}: {r['reason']}")
@@ -644,7 +642,7 @@ def run_self_test():
         "symbol": "AAPL", "name": "蘋果 (AAPL)", "category": "Stocks",
         "price": 220.0, "breakout_entry_price": 220.0, "current_defense_sl": 210.0,
         "take_profit_price": 250.0, "stress_slippage_pct": 0.5,
-        "signal": "🟢 強烈買進 / 低檔加碼",
+        "signal": "🟢 遠藤洋趨勢買進",
     }
     r = validate_zero_cost_cash_order(us, {"USD": 100_000.0}, {})
     print(f"  [閘門4] 美股整數股計算  AAPL     → qty={r['quantity']} 股, "
@@ -669,7 +667,7 @@ def run_self_test():
         "symbol": "SGOV", "name": "超短期國庫券ETF", "category": "Bonds",
         "price": 50.0, "breakout_entry_price": 50.0, "current_defense_sl": 49.75,
         "take_profit_price": 51.0, "stress_slippage_pct": 0.0,
-        "signal": "🟡 價值收息買點",
+        "signal": "🟢 雙動能配置買進",
     }
     r = validate_zero_cost_cash_order(small, {"USD": 500.0}, {})
     print(f"  [閘門8] 最低手續費佔比攔截 SGOV → {r['status']}: {r['reason']}")

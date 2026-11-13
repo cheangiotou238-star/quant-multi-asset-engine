@@ -1,39 +1,64 @@
 # -*- coding: utf-8 -*-
-"""六大資產類別標的池設定檔。
+"""四大正統機構級／名家專屬量化模型標的池設定檔（De-bloat 版）。
 
 ASSET_UNIVERSE 結構：
-    { 資產類別: { 代號: 中文名稱 } }
+    { 策略分組: { 代號: 中文名稱 } }
+四大分組：Stocks（個股）、Crypto（加密現貨）、Income（收息與債券）、
+          Macro（指數 ETF / 黃金 / 現金池）。
 """
 
+# =====================================================================
+# 四大正統機構級／名家專屬量化模型標的池（De-bloat 版）
+# ---------------------------------------------------------------------
+# 每類資產只跑真正適合它的正統日線策略：
+#   A. Stocks  → 遠藤洋趨勢 × 茂爺爺日線三合一 × 森口亮估值（僅限個股）
+#   B. Crypto  → 劉承彥 CTA 111 唐奇安突破 × 4H/1D 濾網 × 吊燈停損（僅限幣圈現貨）
+#   C. Income  → 無風險利差 (Yield Spread) × 200MA 均值回歸（REITs + 美債）
+#   D. Macro   → Gary Antonacci 雙動能 × Faber 200MA 絕對動能（ETF + 黃金 + 現金池）
+# =====================================================================
 ASSET_UNIVERSE = {
-    "Crypto": {
-        "BTC-USD": "比特幣 (BTC)",
-        "ETH-USD": "以太幣 (ETH)",
-        "SOL-USD": "Solana (SOL)",
-    },
     "Stocks": {
         "NVDA": "輝達 (NVDA)",
         "AAPL": "蘋果 (AAPL)",
         "2330.TW": "台積電 (2330)",
     },
-    "REITs": {
+    "Crypto": {
+        "BTC-USD": "比特幣 (BTC)",
+        "ETH-USD": "以太幣 (ETH)",
+        "SOL-USD": "Solana (SOL)",
+    },
+    "Income": {
         "VNQ": "美國房地產ETF (VNQ)",
         "O": "Realty Income月配息信託 (O)",
         "0823.HK": "領展房產基金 (0823.HK)",
-    },
-    "Bonds": {
         "TLT": "20年期美債ETF (TLT)",
         "IEF": "7-10年期美債ETF (IEF)",
-        "SGOV": "超短期國庫券ETF (SGOV)",
     },
-    "ETFs": {
+    "Macro": {
         "VOO": "標普500 ETF (VOO)",
         "QQQ": "納斯達克100 ETF (QQQ)",
-    },
-    "Gold": {
         "GLD": "SPDR黃金ETF (GLD)",
         "IAU": "iShares黃金信託 (IAU)",
+        "SGOV": "超短期國庫券ETF (SGOV)",
     },
+}
+
+# 細分類別（供 IBKR/Binance 橋接器辨識幣種、港股印花稅豁免與品種攔截）
+FINE_CATEGORY_OF_SYMBOL = {
+    "NVDA": "Stocks", "AAPL": "Stocks", "2330.TW": "Stocks",
+    "BTC-USD": "Crypto", "ETH-USD": "Crypto", "SOL-USD": "Crypto",
+    "VNQ": "REITs", "O": "REITs", "0823.HK": "REITs",
+    "TLT": "Bonds", "IEF": "Bonds",
+    "VOO": "ETFs", "QQQ": "ETFs",
+    "GLD": "Gold", "IAU": "Gold", "SGOV": "Bonds",
+}
+
+# 四大策略分組中文標題（前端分頁與 Discord 推播共用）
+MODEL_LABEL = {
+    "Stocks": "📈 個股波段 (Stocks)",
+    "Crypto": "🪙 加密 CTA (Crypto)",
+    "Income": "🏢 收息與債券 (REITs & Bonds)",
+    "Macro": "🌍 雙動能配置與現金池 (ETF, Gold & SGOV)",
 }
 
 # ===== 階段 A：六大領域策略分流與精確止損價位升級 =====

@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Discord 訊號推播工具。
+"""Discord 訊號推播工具（De-bloat 版）。
 
-讀取 .env 中的 DISCORD_WEBHOOK_URL，以及 ./public/data/latest_signals.json，
-將六大資產類別的最新價格、RSI、均線趨勢、殖利率與買賣訊號，
-排版成精美的 Discord Embed 報告發送到 Discord 頻道。
+讀取 .env 的 DISCORD_WEBHOOK_URL 與 ./public/data/latest_signals.json，
+嚴格按照「四大正統策略分組」清爽輸出，不再印出跨資產硬套的欄位。
+
+四大分組：
+    📈 個股波段 (Stocks) → 遠藤洋 25MA 趨勢 / 茂爺爺三合一 / 森口亮估值 / ATR 止損
+    🪙 加密 CTA (Crypto) → MA60 牛熊 / CTA 六策 / 4H+1D 共振 / 吊燈停損
+    🏢 收息與債券 (Income) → 殖利率利差 / MA200 多空
+    🌍 雙動能配置 (Macro) → SGOV 停泊比例 / 絕對動能 / 動能排名
 """
 
 import json
@@ -18,16 +23,19 @@ load_dotenv()
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
 SIGNALS_FILE = os.path.join(".", "public", "data", "latest_signals.json")
 
-# 香檳金
 GOLD = 0xC9A227
 
-CATEGORY_ICON = {
-    "Crypto": "🪙",
+GROUP_ICON = {
     "Stocks": "📈",
-    "REITs": "🏢",
-    "Bonds": "📜",
-    "ETFs": "🧺",
-    "Gold": "🥇",
+    "Crypto": "🪙",
+    "Income": "🏢",
+    "Macro": "🌍",
+}
+GROUP_TITLE = {
+    "Stocks": "個股波段 (遠藤洋 × 茂爺爺 × 森口亮)",
+    "Crypto": "加密 CTA (劉承彥《CTA 111 技》唐奇安突破)",
+    "Income": "收息與債券 (無風險利差 × 200MA)",
+    "Macro": "雙動能配置 (Gary Antonacci × Faber 200MA)",
 }
 
 
@@ -36,322 +44,78 @@ def load_signals():
         return json.load(f)
 
 
-def fmt_num(v, decimals=2):
+def num(v, d=2):
     if v is None:
         return "N/A"
-    return f"{v:.{decimals}f}"
+    return f"{v:,.{d}f}"
 
 
-def fmt_change(v):
+def pct(v):
     if v is None:
         return "N/A"
     return f"{v:+.2f}%"
 
 
-def fmt_yield(v):
-    if v is None:
-        return "N/A"
-    return f"{v * 100:.2f}%"
-
-
-def fmt_weight(v):
-    """建議倉位權重（已為百分比數值，如 6.25 表示 6.25%）。"""
-    if v is None:
-        return "N/A"
-    return f"{v:.2f}%"
-
-
-def fmt_rate(v):
-    """將勝率 / 累積報酬（小數）轉為百分比字串。"""
-    if v is None:
-        return "N/A"
-    return f"{v * 100:.1f}%"
-
-
-def fmt_pct_signed(v):
-    """將小數報酬 / 回撤轉為帶正負號的百分比字串（-0.1234 -> -12.34%）。"""
-    if v is None:
-        return "N/A"
-    return f"{v * 100:+.2f}%"
-
-
-def fmt_ratio(v):
-    """比率（夏普 / 獲利因子）格式化，保留 2 位小數。"""
-    if v is None:
-        return "N/A"
-    return f"{v:.2f}"
-
-
-def fmt_score(v):
-    """五師綜合評分（0~100 整數）格式化。"""
-    if v is None:
-        return "N/A"
-    return f"{int(round(v))}"
-
-
-def fmt_vol_ratio(v):
-    """量能倍數格式化（當日量 / 20 日均量）。"""
-    if v is None:
-        return "N/A"
-    return f"{v:.2f}x"
-
-
-def fmt_int(v):
-    """整數（交易次數）格式化，None 回傳 N/A。"""
-    if v is None:
-        return "N/A"
-    return str(v)
-
-
-def fmt_pct_point(v, decimals=2):
-    """百分點數值（已為百分比，如 -4.09 即 -4.09%）格式化，不再乘以 100。"""
-    if v is None:
-        return "N/A"
-    return f"{v:.{decimals}f}%"
-
-
-def fmt_pct_point_signed(v, decimals=2):
-    """百分點數值帶正負號格式化（如 +2.82% / -4.09%）。"""
-    if v is None:
-        return "N/A"
-    return f"{v:+.{decimals}f}%"
-
-
-def ma_trend(ma20, ma60):
-    if ma20 is None or ma60 is None:
-        return "N/A"
-    if ma20 > ma60:
-        return "📈 多頭排列"
-    if ma20 < ma60:
-        return "📉 空頭排列"
-    return "➖ 糾結"
-
-
-def _to_num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _first_num(*vals):
-    for v in vals:
-        n = _to_num(v)
-        if n is not None:
-            return n
-    return None
-
-
-def anomalies(it):
-    """三大異動焦點：遊牧民交減陰線 / 主力級 A+ / 跌破防守止損。"""
-    out = []
-    n = it.get("nomad_signal") or ""
-    if "🔥" in n:
-        out.append(n)
-    if "🚀" in n:
-        out.append(n)
-    fd = it.get("five_dim_scores") or {}
-    if fd.get("is_a_plus"):
-        out.append("主力級 A+")
-    price = _first_num(it.get("price"))
-    sl = _first_num(it.get("stop_loss_price"), it.get("current_defense_sl"))
-    if price is not None and sl is not None and price < sl:
-        out.append("🚨 跌破防守止損")
-    return out
-
-
-def slippage_badge(it):
-    """【裝甲4】滑點緩衝標籤：僅在啟動極端踩踏滑點時顯示。"""
-    sp = _to_num(it.get("stress_slippage_pct"))
-    if sp is None or sp <= 0:
-        return None
-    return f"[滑點緩衝: -{sp:.2f}% | 含滑點安全倉位]"
-
-
-def build_focus_alert(data):
-    """總覽頂部「今日異動焦點快訊」。"""
-    focus = []
-    for items in data.get("assets", {}).values():
-        for it in items or []:
-            al = anomalies(it)
-            if al:
-                focus.append(f"{it.get('symbol', '')} {al[0]}")
-    return "\n".join(focus) if focus else None
-
-
-def build_ledger_line(data):
-    """ledger_summary 單行歷史帳本驗證摘要。"""
-    ls = data.get("ledger_summary") or {}
-    if not ls or (not ls.get("total_signals") and not ls.get("evaluated")):
-        return None
-    ov = ls.get("overall") or {}
-    n_symbols = len(ls.get("by_symbol") or {})
-    return (
-        f"📒 歷史帳本：{ls.get('total_signals', 0)} 筆 / 已驗證 {ls.get('evaluated', 0)} 筆"
-        f"｜MFE {fmt_pct_point_signed(ov.get('avg_mfe_pct'))}"
-        f" MAE {fmt_pct_point_signed(ov.get('avg_mae_pct'))}"
-        f" 累積 {fmt_pct_point_signed(ov.get('avg_current_return_pct'))}"
-        f" 勝率 {fmt_pct_point(ov.get('win_rate_pct'), 1)}"
-        f"｜涵蓋 {n_symbols} 檔"
-    )
-
-
-def build_macro_block(macro):
-    """組出「全球宏觀與市場情緒溫度計」文字區塊。"""
-    if not macro:
-        return None
-
-    def num(v, suffix=""):
-        if v is None:
-            return "N/A"
-        return f"{v:.2f}{suffix}"
-
-    vix_val = macro.get("vix")
-    vix_txt = f"{vix_val:.2f}" if vix_val is not None else "N/A"
-    vix_zone = macro.get("vix_zone")
-    fng = macro.get("crypto_fear_greed")
-    fng_txt = f"{int(fng)}" if fng is not None else "N/A"
-    fng_cls = macro.get("crypto_fear_greed_classification")
-
-    lines = [
-        f"🇺🇸 10年期美債殖利率：**{num(macro.get('us10y_yield'), '%')}**",
-        f"💵 美元指數 DXY：**{num(macro.get('dxy'))}**",
-        f"😨 VIX 恐慌指數：**{vix_txt}**" + (f"（{vix_zone}）" if vix_zone else ""),
-        f"🪙 幣圈恐慌貪婪：**{fng_txt}**" + (f"（{fng_cls}）" if fng_cls else ""),
-    ]
-    return "\n".join(lines)
-
-
-def build_leaderboard(data):
-    """森口亮前段班：依五師綜合評分排序，挑出最高贏面標的。"""
-    ranked = []
-    for items in data.get("assets", {}).values():
-        ranked.extend(items or [])
-    ranked.sort(key=lambda it: -(it.get("master_score") or -1))
-    top = ranked[:5]
-    medals = ["🥇", "🥈", "🥉"]
-    lines = []
-    for i, it in enumerate(top):
-        medal = medals[i] if i < len(medals) else f"#{i + 1}"
-        lines.append(
-            f"{medal} **{it.get('name')}**（{it.get('symbol')}）"
-            f" 評分 **{fmt_score(it.get('master_score'))}**\n"
-            f"　📦 {it.get('position_stage') or 'N/A'}｜"
-            f"量能 **{fmt_vol_ratio(it.get('vol_ratio'))}**｜"
-            f"移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**\n"
-            f"　🏛 {it.get('market_regime') or 'N/A'}｜"
-            f"訂單流 {it.get('ofi_direction') or 'N/A'} "
-            f"VWAP20 {fmt_pct_point_signed(it.get('vwap_20d_bias'))}\n"
-            f"　🛡 防守止損 **{fmt_num(it.get('current_defense_sl'), 2)}**｜"
-            f"突破買入 **{fmt_num(it.get('breakout_entry_price'), 2)}**"
-        )
-    return "\n".join(lines)
-
-
 def build_embeds(data):
+    macro = data.get("macro_overview") or {}
+    sgov_parking = data.get("sgov_parking_pct")
     embeds = []
-    summary = data.get("summary", {})
 
-    # 標題 Embed：產生時間 + 訊號分布摘要
-    desc_lines = [f"🕒 產生時間：{data.get('generated_at', 'N/A')}", ""]
-    signal_counts = summary.get("signal_counts", {})
-    for sig, cnt in sorted(signal_counts.items(), key=lambda x: -x[1]):
-        desc_lines.append(f"{sig}：**{cnt}** 檔")
-    header = {
-        "title": "📊 六大資產量化戰情室",
-        "description": "\n".join(desc_lines),
-        "color": GOLD,
-        "footer": {"text": "Quant Multi-Asset Engine · 資料來源 Binance / Yahoo Finance / Local Cache"},
-    }
-    header_fields = []
-    focus_alert = build_focus_alert(data)
-    header_fields.append({
-        "name": "⚡ 今日異動焦點快訊",
-        "value": focus_alert or "今日無觸發異動焦點",
-        "inline": False,
-    })
-    # 【裝甲1】後廚斷供報警：若有標的降級本地快取，自動標註於總覽 Embed
-    system_health = data.get("system_health") or {}
-    if system_health.get("fallback_count"):
-        header_fields.append({
-            "name": "⚠️ 數據源降級提示",
-            "value": f"{system_health['fallback_count']} 檔標的使用本地快取運算",
-            "inline": False,
-        })
-    ledger_line = build_ledger_line(data)
-    if ledger_line:
-        header_fields.append({
-            "name": "📒 歷史帳本驗證摘要",
-            "value": ledger_line,
-            "inline": False,
-        })
-    macro_block = build_macro_block(data.get("macro_overview"))
-    if macro_block:
-        header_fields.append({
-            "name": "🌍 全球宏觀與市場情緒溫度計",
-            "value": macro_block,
-            "inline": False,
-        })
-    leaderboard = build_leaderboard(data)
-    if leaderboard:
-        header_fields.append({
-            "name": "🏆 五師綜合評分前段班（森口亮 5 分鐘戰情室）",
-            "value": leaderboard,
-            "inline": False,
-        })
-    if header_fields:
-        header["fields"] = header_fields
-    embeds.append(header)
+    # 頂部巨觀與現金池
+    header = (
+        f"🏦 SGOV 現金池停泊比例 **{num(sgov_parking)}%**\n"
+        f"10Y 美債 **{num(macro.get('us10y_yield'))}%**｜DXY **{num(macro.get('dxy'))}**｜"
+        f"VIX **{num(macro.get('vix'))}** ({macro.get('vix_zone') or 'N/A'})\n"
+        f"幣圈恐慌貪婪 **{macro.get('crypto_fear_greed')}** ({macro.get('crypto_fear_greed_classification') or 'N/A'})"
+    )
+    embeds.append({"title": "🌍 巨觀總覽與現金池", "description": header, "color": GOLD})
 
-    # 每個資產類別一個 Embed
-    for category, items in data.get("assets", {}).items():
-        fields = []
-        exit_rule_desc = None
-        for it in items:
-            name = (
-                f"{it.get('signal', '')} "
-                f"{it.get('name', '')}（{it.get('symbol', '')}）"
-            )
-            bt = it.get("backtest_strategy_1y") or {}
-            slip_badge = slippage_badge(it)
-            # 出場法則為「領域」共用，顯示於類別 Embed 描述，避免每檔重複撐爆 6000 字限制
-            exit_rule_desc = it.get("exit_rule_desc") or exit_rule_desc
-            value = (
-                f"💰 **{fmt_num(it.get('price'), 2)}**（{fmt_change(it.get('change_pct'))}）"
-                f" RSI **{fmt_num(it.get('rsi14'), 2)}**\n"
-                f"📈 {ma_trend(it.get('ma20'), it.get('ma60'))}"
-                f" MA20 **{fmt_num(it.get('ma20'), 2)}** MA60 **{fmt_num(it.get('ma60'), 2)}**\n"
-                f"📐 ATR **{fmt_num(it.get('atr14'), 2)}** MA200 **{fmt_num(it.get('ma200'), 2)}**"
-                f" HIGH20 **{fmt_num(it.get('high20'), 2)}** 殖利 **{fmt_yield(it.get('dividend_yield'))}**\n"
-                f"⏱ {it.get('horizon') or 'N/A'}｜🎯 買 **{fmt_num(it.get('ideal_buy_price'), 2)}**"
-                f" 停損 **{fmt_num(it.get('stop_loss_price'), 2)}** 停利 **{fmt_num(it.get('take_profit_price'), 2)}**\n"
-                f"🏛 市場狀態 {it.get('market_regime') or 'N/A'}｜訂單流 {it.get('ofi_direction') or 'N/A'}"
-                f" VWAP20乖離 {fmt_pct_point_signed(it.get('vwap_20d_bias'))}\n"
-                f"🗳 CTA 六策投票 **{it.get('cta_vote_score') or 'N/A'}**｜樣本外 {it.get('overfit_check') or 'N/A'}\n"
-                f"🛡 防守止損 **{fmt_num(it.get('current_defense_sl'), 2)}**｜突破買入 **{fmt_num(it.get('breakout_entry_price'), 2)}**\n"
-                f"🏆 勝率 **{fmt_rate(bt.get('win_rate'))}** 報酬 **{fmt_rate(bt.get('strategy_return_1y'))}**"
-                f" 交易 **{fmt_int(bt.get('trade_count_1y'))}** 次\n"
-                f"📉 最大回撤 **{fmt_pct_signed(bt.get('max_drawdown_pct'))}**"
-                f" 夏普 **{fmt_ratio(bt.get('sharpe_ratio'))}**"
-                f" 獲利因子 **{fmt_ratio(bt.get('profit_factor'))}**\n"
-                f"🕰 近半年報酬 **{fmt_pct_signed(bt.get('oos_return_6m'))}**\n"
-                f"🎯 五師評分 **{fmt_score(it.get('master_score'))}**｜"
-                f"📦 {it.get('position_stage') or 'N/A'}\n"
-                f"📈 量能倍數 **{fmt_vol_ratio(it.get('vol_ratio'))}**｜"
-                f"🛡 移動停利 **{fmt_num(it.get('trailing_stop_price'), 2)}**\n"
-                f"📦 建議倉位 **{fmt_weight(it.get('suggested_weight_pct'))}**｜"
-                f"🚪 {bt.get('last_exit_reason') or 'N/A'}｜📊 {it.get('volume_status') or 'N/A'}\n"
-                f"{slip_badge + chr(10) if slip_badge else ''}"
-                f"🔭 {it.get('nomad_signal') or '—'}｜短打 +1% **{fmt_num(it.get('nomad_tp_1pct'), 2)}** +3% **{fmt_num(it.get('nomad_tp_3pct'), 2)}** -5% **{fmt_num(it.get('nomad_sl_5pct'), 2)}**\n"
-                f"🧓 茂爺爺 PBR **{fmt_num(it.get('pbr'), 2)}** 殖利 **{fmt_yield(it.get('dividend_yield'))}** 6大 **{fmt_int(it.get('fujimoto_6_checks'))}/6**｜遠藤洋 {it.get('endo_entry_rule') or '—'}\n"
-                f"📝 {it.get('action_reason') or 'N/A'}"
-            )
-            fields.append({"name": name, "value": value, "inline": False})
+    assets = data.get("assets") or {}
+    for group in ("Stocks", "Crypto", "Income", "Macro"):
+        records = assets.get(group) or []
+        if not records:
+            continue
+        lines = []
+        for it in records:
+            sym = it.get("symbol")
+            price = num(it.get("price"))
+            signal = it.get("signal") or "N/A"
+            w = it.get("suggested_weight_pct")
+            w_str = num(w) + "%" if w is not None else "N/A"
+            line = f"**{sym}** {price}｜{signal}｜倉位 {w_str}"
+            if group == "Stocks":
+                line += (
+                    f"\n    遠藤洋 25MA {it.get('endo_25ma_status') or 'N/A'}｜"
+                    f"茂爺爺 {it.get('fujimoto_3in1_status') or 'N/A'}｜"
+                    f"40% 法則 {num(it.get('rule_of_40'))}%｜目標價② {num(it.get('target_price_2'))}｜"
+                    f"ATR 止損 {num(it.get('atr_defense_sl'))}"
+                )
+            elif group == "Crypto":
+                line += (
+                    f"\n    MA60 濾網 {it.get('d1_ma60_filter') or 'N/A'}｜"
+                    f"CTA 六策 {it.get('cta_vote_score') or 'N/A'}｜"
+                    f"4H+1D {it.get('mtf_4h_1d_resonance') or 'N/A'}｜"
+                    f"Taker {num(it.get('taker_buy_ratio_5d'))}%｜"
+                    f"吊燈停損 {num(it.get('chandelier_stop'))}"
+                )
+            elif group == "Income":
+                line += (
+                    f"\n    殖利率 {num(it.get('dividend_yield_pct'))}%｜"
+                    f"利差 {pct(it.get('yield_spread'))}｜MA200 {it.get('ma200_position') or 'N/A'}｜"
+                    f"止損 {num(it.get('current_defense_sl'))}"
+                )
+            else:  # Macro
+                line += (
+                    f"\n    MA200 {it.get('ma200_position') or 'N/A'}｜"
+                    f"6月報酬 {pct(it.get('ret_6m_pct'))}｜"
+                    f"相對 SGOV {pct(it.get('excess_return_vs_sgov'))}｜"
+                    f"動能排名 Rank {it.get('momentum_rank') or 'N/A'}"
+                )
+            lines.append(line)
         embeds.append({
-            "title": f"{CATEGORY_ICON.get(category, '')} {category}",
-            "description": f"📐 出場法則：{exit_rule_desc or 'N/A'}",
+            "title": f"{GROUP_ICON.get(group, '')} {GROUP_TITLE.get(group, group)}",
+            "description": "\n".join(lines),
             "color": GOLD,
-            "fields": fields,
         })
 
     return embeds
@@ -365,7 +129,6 @@ def send(embeds):
 
 
 def main():
-    # 強制 UTF-8 輸出，避免 Windows cp950 主控台無法編碼 emoji
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 

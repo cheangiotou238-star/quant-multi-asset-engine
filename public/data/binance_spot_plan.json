@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-13T02:07:00+00:00",
+  "generated_at": "2026-11-13T15:09:44+08:00",
   "mode": "100% 純本金現貨 Spot Cash Only（零槓桿・零借貸・零放空）",
   "spot_base": "https://api.binance.com/api/v3",
   "forbidden_endpoints": [
@@ -8,21 +8,21 @@
     "/sapi/v1/margin/"
   ],
   "time_sync": {
-    "server_ms": null,
-    "offset_ms": 0,
-    "status": "🟠 時間同步失敗（451 Client Error:  for url: https://api.binance.com/api/v3/time），offset_ms=0"
+    "server_ms": 1794553782931,
+    "offset_ms": -91,
+    "status": "🟢 時間同步完成"
   },
   "cash_usd": 100000.0,
   "orders": [
     {
       "symbol": "BTC-USD",
       "pair": "BTCUSDT",
-      "signal": "🔴 減碼 / 停利警戒",
-      "market_regime": "⚖️ 箱型震盪盤",
+      "signal": "🔴 熊市空頭防禦 (100% 空手轉現金)",
+      "market_regime": "🔴 熊市空頭防禦 (100% 空手轉現金)",
       "suggested_weight_pct": 0.0,
-      "cta_vote_score": "4/6 看空",
-      "step_size": "0.00001",
-      "tick_size": "0.01",
+      "cta_vote_score": "0/6 看多",
+      "step_size": "0.00001000",
+      "tick_size": "0.01000000",
       "min_notional": "10.0",
       "status": "skipped",
       "reason": "減碼/空頭主跌/跌破防守止損或建議倉位 0%，禁止新建多單"
@@ -30,12 +30,12 @@
     {
       "symbol": "ETH-USD",
       "pair": "ETHUSDT",
-      "signal": "🔴 減碼 / 停利警戒",
-      "market_regime": "📉 空頭強趨勢主跌段",
+      "signal": "🔴 熊市空頭防禦 (100% 空手轉現金)",
+      "market_regime": "🔴 熊市空頭防禦 (100% 空手轉現金)",
       "suggested_weight_pct": 0.0,
-      "cta_vote_score": "4/6 看空",
-      "step_size": "0.0001",
-      "tick_size": "0.01",
+      "cta_vote_score": "0/6 看多",
+      "step_size": "0.00010000",
+      "tick_size": "0.01000000",
       "min_notional": "10.0",
       "status": "skipped",
       "reason": "減碼/空頭主跌/跌破防守止損或建議倉位 0%，禁止新建多單"
@@ -43,12 +43,12 @@
     {
       "symbol": "SOL-USD",
       "pair": "SOLUSDT",
-      "signal": "🔴 減碼 / 停利警戒",
-      "market_regime": "📉 空頭強趨勢主跌段",
+      "signal": "🔴 熊市空頭防禦 (100% 空手轉現金)",
+      "market_regime": "🔴 熊市空頭防禦 (100% 空手轉現金)",
       "suggested_weight_pct": 0.0,
-      "cta_vote_score": "4/6 看空",
-      "step_size": "0.01",
-      "tick_size": "0.01",
+      "cta_vote_score": "0/6 看多",
+      "step_size": "0.00100000",
+      "tick_size": "0.01000000",
       "min_notional": "10.0",
       "status": "skipped",
       "reason": "減碼/空頭主跌/跌破防守止損或建議倉位 0%，禁止新建多單"

@@ -44,13 +44,9 @@ FORBIDDEN_ENDPOINT_MARKERS = ("/fapi/", "/dapi/", "/sapi/v1/margin/")
 SIGNALS_FILE = os.path.join(".", "public", "data", "latest_signals.json")
 PLAN_FILE = os.path.join(".", "public", "data", "binance_spot_plan.json")
 
-# 明確看多 / 試單主訊號（與 quant_engine.py 訊號定義一致）
+# 明確看多 / 試單主訊號（與 quant_engine.py 四大正統策略的幣圈看多訊號一致）
 BULLISH_SIGNALS = {
-    "🟢 強烈買進 / 低檔加碼",
-    "🔵 趨勢多頭 / 續抱",
-    "🟡 價值收息買點",
-    "🔥 爆量長紅突破 (強勢買進)",
-    "🟡 左側超賣試單 (嚴控1/9小倉)",
+    "🟢 CTA 順勢突破買進",
 }
 
 SYMBOL_MAP = {"BTC-USD": "BTCUSDT", "ETH-USD": "ETHUSDT", "SOL-USD": "SOLUSDT"}
