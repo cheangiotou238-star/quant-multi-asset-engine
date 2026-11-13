@@ -16,6 +16,8 @@ RedirectMatch 404 /\.(env|htaccess|github)(/|$)
 </FilesMatch>
 
 # 明確允許前端與數據檔（HTML / CSS / JS / JSON / 圖片 / 字型）
+# 註：data/*.json 與 public/data/*.json 皆為 .json 數據檔，已於此放行供前端 GET 讀取，
+#     不會被上方 .py/.yml/... 攔截清單誤擋為 403/404。
 <FilesMatch "\.(html?|css|js|json|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|otf|eot)$">
   Require all granted
 </FilesMatch>

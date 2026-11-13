@@ -48,7 +48,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/history/*.csv data/signal_ledger.csv public/data/latest_signals.json public/data/ibkr_order_plan.json public/data/binance_spot_plan.json index.html public/index.html
+          git add data/history/*.csv data/signal_ledger.csv data/latest_signals.json data/ibkr_order_plan.json data/binance_spot_plan.json public/data/latest_signals.json public/data/ibkr_order_plan.json public/data/binance_spot_plan.json index.html public/index.html
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

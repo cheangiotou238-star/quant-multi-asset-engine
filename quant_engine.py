@@ -10,7 +10,7 @@
     D. Macro  (VOO / QQQ / GLD / IAU / SGOV)   → Gary Antonacci 雙動能 × Faber 200MA 絕對動能
 
 輸出：
-    ./public/data/latest_signals.json（供前端四大分頁與 ibkr/binance 橋接器讀取）
+    ./public/data/latest_signals.json 與 ./data/latest_signals.json（雙路徑同步輸出，供前端四大分頁與 ibkr/binance 橋接器讀取）
     ./data/signal_ledger.csv（歷史訊號帳本，以 date + symbol 去重）
 """
 
@@ -39,6 +39,9 @@ OFFLINE_MODE = "--offline" in sys.argv
 HISTORY_DIR = os.path.join(".", "data", "history")
 OUTPUT_DIR = os.path.join(".", "public", "data")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "latest_signals.json")
+# Hostinger 根目錄直接載入根 index.html，前端會依序抓 public/data/ 與 data/，
+# 故最新訊號需同時輸出到兩處，避免前端抓 data/latest_signals.json 時得到 404 HTML。
+ROOT_OUTPUT_FILE = os.path.join(".", "data", "latest_signals.json")
 LEDGER_FILE = os.path.join(".", "data", "signal_ledger.csv")
 CUSTOM_ESTIMATES_PATH = os.path.join(".", "data", "custom_estimates.json")
 
@@ -972,12 +975,14 @@ def main():
         "assets": assets,
     }
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
+    for path in (OUTPUT_FILE, ROOT_OUTPUT_FILE):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2)
 
     append_signal_ledger(records)
 
-    print(f"✅ 已輸出 {OUTPUT_FILE}（{len(records)} 檔標的）")
+    print(f"✅ 已輸出 {OUTPUT_FILE} 與 {ROOT_OUTPUT_FILE}（{len(records)} 檔標的）")
     print(f"   SGOV 現金池停泊比例：{round2(sgov_parking)}%")
     print(f"   訊號分布：{output['summary']['signal_counts']}")
     if failed:

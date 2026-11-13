@@ -334,6 +334,40 @@
     document.getElementById("content").innerHTML = html;
   }
 
+  // 多重路徑 JSON 載入器：依序探測 public/data/ 與 data/（相對 + 絕對），
+  // 每次 fetch 先檢查 res.ok，再以 res.text() 驗證內容以「{」開頭（防 404/403 回傳 HTML），
+  // 成功 JSON.parse 後即採用；任一環節失敗就換下一條路徑。
+  var JSON_BASE_PATHS = ["./public/data/", "./data/", "/public/data/", "/data/"];
+
+  function loadJsonMultiPath(basename) {
+    var ts = Date.now();
+    var urls = JSON_BASE_PATHS.map(function (p) { return p + basename + "?t=" + ts; });
+    var idx = 0;
+    function tryNext() {
+      if (idx >= urls.length) {
+        return Promise.reject(new Error("所有路徑皆無法載入 " + basename));
+      }
+      var url = urls[idx++];
+      return fetch(url, { cache: "no-store" })
+        .then(function (res) {
+          if (!res.ok) return tryNext();
+          return res.text().then(function (txt) {
+            var clean = String(txt == null ? "" : txt).replace(/^\uFEFF/, "").trim();
+            if (clean.charAt(0) !== "{" || clean.indexOf("<!DOCTYPE") === 0 || clean.indexOf("<html") === 0) {
+              return tryNext();
+            }
+            try {
+              return JSON.parse(clean);
+            } catch (err) {
+              return tryNext();
+            }
+          });
+        })
+        .catch(function () { return tryNext(); });
+    }
+    return tryNext();
+  }
+
   function init() {
     renderTabs();
     var capInput = document.getElementById("cap");
@@ -346,16 +380,22 @@
     }
     capInput.addEventListener("input", refreshCap);
 
-    fetch("data/latest_signals.json", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
+    loadJsonMultiPath("latest_signals.json")
       .then(function (d) {
         DATA = d;
         headerInfo();
         activate("stocks");
+        // 對 ibkr_order_plan.json 與 binance_spot_plan.json 亦套用相同雙路徑讀取邏輯
+        loadJsonMultiPath("ibkr_order_plan.json").then(function (p) {
+          DATA.ibkr_order_plan = p;
+        }).catch(function () {});
+        loadJsonMultiPath("binance_spot_plan.json").then(function (p) {
+          DATA.binance_spot_plan = p;
+        }).catch(function () {});
       })
       .catch(function (e) {
         document.getElementById("subtitle").textContent = "載入資料失敗：" + e;
-        document.getElementById("content").innerHTML = '<div class="banner"><div class="lbl">無法載入 data/latest_signals.json，請先執行 python -u quant_engine.py --offline</div></div>';
+        document.getElementById("content").innerHTML = '<div class="banner"><div class="lbl">無法載入 latest_signals.json（已依序嘗試 ./public/data/、./data/、/public/data/、/data/ 等路徑），請先執行 python -u quant_engine.py --offline</div></div>';
       });
   }
 

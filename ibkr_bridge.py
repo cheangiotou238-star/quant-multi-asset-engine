@@ -62,6 +62,8 @@ from config import (
 
 SIGNALS_FILE = os.path.join(".", "public", "data", "latest_signals.json")
 ORDER_PLAN_FILE = os.path.join(".", "public", "data", "ibkr_order_plan.json")
+# 前端雙路徑讀取：同時輸出 public/data/ 與 data/ 兩份，避免根目錄部署時 404 HTML。
+ORDER_PLAN_FILE_ROOT = os.path.join(".", "data", "ibkr_order_plan.json")
 ORDER_LOG_FILE = os.path.join(".", "ibkr_order_log.txt")
 CUSTOM_ESTIMATES_PATH = os.path.join(".", "data", "custom_estimates.json")
 
@@ -732,10 +734,12 @@ def run_dry_run(records, data, cash_balances=None):
         "orders": results,
     }
 
-    with open(ORDER_PLAN_FILE, "w", encoding="utf-8") as f:
-        json.dump(plan, f, ensure_ascii=False, indent=2)
+    for path in (ORDER_PLAN_FILE, ORDER_PLAN_FILE_ROOT):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(plan, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ 離線模擬委託單計畫已輸出至 {ORDER_PLAN_FILE}")
+    print(f"✅ 離線模擬委託單計畫已輸出至 {ORDER_PLAN_FILE} 與 {ORDER_PLAN_FILE_ROOT}")
     print(f"   訊號檔：{SIGNALS_FILE}（免費數據源，未向 IBKR 請求任何行情）")
     print(f"   現金餘額（離線預設）：USD {_fmt_money(cash.get('USD', 0.0))} / "
           f"HKD {_fmt_money(cash.get('HKD', 0.0))}")

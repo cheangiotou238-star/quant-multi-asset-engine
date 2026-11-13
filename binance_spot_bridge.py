@@ -43,6 +43,8 @@ FORBIDDEN_ENDPOINT_MARKERS = ("/fapi/", "/dapi/", "/sapi/v1/margin/")
 
 SIGNALS_FILE = os.path.join(".", "public", "data", "latest_signals.json")
 PLAN_FILE = os.path.join(".", "public", "data", "binance_spot_plan.json")
+# 前端雙路徑讀取：同時輸出 public/data/ 與 data/ 兩份，避免根目錄部署時 404 HTML。
+PLAN_FILE_ROOT = os.path.join(".", "data", "binance_spot_plan.json")
 
 # 明確看多 / 試單主訊號（與 quant_engine.py 四大正統策略的幣圈看多訊號一致）
 BULLISH_SIGNALS = {
@@ -296,11 +298,12 @@ def run_dry_run(args):
     exchange_info = load_exchange_info()
     plan = build_spot_plan(records, args.cash_usd, time_sync, exchange_info)
 
-    os.makedirs(os.path.dirname(PLAN_FILE), exist_ok=True)
-    with open(PLAN_FILE, "w", encoding="utf-8") as f:
-        json.dump(plan, f, ensure_ascii=False, indent=2)
+    for path in (PLAN_FILE, PLAN_FILE_ROOT):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(plan, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ 純現貨委託預覽已輸出至 {PLAN_FILE}")
+    print(f"✅ 純現貨委託預覽已輸出至 {PLAN_FILE} 與 {PLAN_FILE_ROOT}")
     print(f"   模式：{plan['mode']}")
     print(f"   時間同步：{time_sync['status']}（offset_ms={offset_ms}）")
     print("   委託預覽：")
