@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-13T16:01:56+08:00",
+  "generated_at": "2026-11-13T08:04:44+00:00",
   "mode": "dry-run",
   "data_decoupled": true,
   "cash_balances": {
@@ -182,9 +182,9 @@
       "category": "REITs",
       "currency": "HKD",
       "signal": "🔵 收息續抱・利差未達標",
-      "limit_price": 41.04,
+      "limit_price": 40.92,
       "stop_price": 38.17,
-      "tp_price": 42.64,
+      "tp_price": 42.52,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "skipped",
