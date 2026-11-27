@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-26T18:36:17+00:00",
+  "generated_at": "2026-11-27T03:45:38+00:00",
   "mode": "dry-run",
   "data_decoupled": true,
   "cash_balances": {
@@ -32,8 +32,8 @@
   "summary": {
     "total": 16,
     "approved": 0,
-    "blocked": 0,
-    "skipped": 16
+    "blocked": 1,
+    "skipped": 15
   },
   "orders": [
     {
@@ -75,10 +75,10 @@
       "name": "台積電 (2330)",
       "category": "Stocks",
       "currency": "USD",
-      "signal": "⚪ 趨勢未立・觀望",
-      "limit_price": null,
-      "stop_price": null,
-      "tp_price": null,
+      "signal": "🔴 跌破防守・停損出場",
+      "limit_price": 2165.0,
+      "stop_price": 2249.6,
+      "tp_price": 2431.52,
       "quantity": 0,
       "estimated_cost": 0.0,
       "status": "skipped",
@@ -177,15 +177,15 @@
       "name": "領展房產基金 (0823.HK)",
       "category": "REITs",
       "currency": "HKD",
-      "signal": "⚪ 跌破年線・暫停收息買進 (資金停泊 SGOV)",
-      "limit_price": null,
-      "stop_price": null,
-      "tp_price": null,
+      "signal": "🟢 收息配置買進",
+      "limit_price": 39.48,
+      "stop_price": 38.41,
+      "tp_price": 40.94,
       "quantity": 0,
       "estimated_cost": 0.0,
-      "status": "skipped",
-      "gate": 2,
-      "reason": "主訊號「⚪ 跌破年線・暫停收息買進 (資金停泊 SGOV)」非明確看多/試單，不產生買單",
+      "status": "blocked",
+      "gate": 3,
+      "reason": "🚫 [防外匯借貸攔截] 0823.HK 需要 3,957.87 HKD，但帳上已結算 HKD 現金僅 0.00，請先在 IBKR 手動換匯 (FX Conversion)，禁止自動借貸計息！",
       "action": null,
       "earnings_note": ""
     },
